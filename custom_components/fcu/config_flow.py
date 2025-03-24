@@ -1,20 +1,34 @@
-from homeassistant import config_entries
-from homeassistant.const import CONF_IP_ADDRESS, CONF_NAME
+"""Config flow for FCU integration."""
+import logging
 import voluptuous as vol
+from homeassistant import config_entries
 
-from . import DOMAIN
+_LOGGER = logging.getLogger(__name__)
 
-class CustomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for ha_fcu_custom."""
+DOMAIN = "fcu"
+
+class FCUConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for FCU."""
+
+    VERSION = 1
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
         errors = {}
         if user_input is not None:
-            return self.async_create_entry(title=user_input[CONF_NAME], data=user_input)
-        
-        data_schema = vol.Schema({
-            vol.Required(CONF_NAME): str,
-            vol.Required(CONF_IP_ADDRESS): str
-        })
-        return self.async_show_form(step_id="user", data_schema=data_schema, errors=errors)
+            ip_address = user_input["ip_address"]
+            name = user_input["name"]
+            # Validate IP and Name
+            if not ip_address.startswith("192.168."):  # Example validation
+                errors["ip_address"] = "invalid_ip"
+            else:
+                return self.async_create_entry(title=name, data=user_input)
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema({
+                vol.Required("name"): str,
+                vol.Required("ip_address"): str,
+            }),
+            errors=errors,
+        )

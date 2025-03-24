@@ -1,9 +1,9 @@
 {
-    "domain": "ha_fcu_custom",
-    "name": "Custom FCU Climate",
-    "version": "1.0.0",
-    "config_flow": true,
+    "domain": "fcu",
+    "name": "FCU Climate Integration",
+    "documentation": "https://github.com/yourusername/ha_fcu_custom",
     "requirements": [],
-    "dependencies": [],
-    "codeowners": ["@neofral"]
-}
+    "codeowners": ["@neofral"],
+    "version": "1.0.2",
+    "config_flow": true
+  }

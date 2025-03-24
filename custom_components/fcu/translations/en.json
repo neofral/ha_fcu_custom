@@ -1,14 +1,18 @@
 {
     "config": {
-        "step": {
-            "user": {
-                "title": "Configure Custom FCU",
-                "description": "Enter the details for your climate device.",
-                "data": {
-                    "name": "Device Name",
-                    "ip_address": "IP Address"
-                }
-            }
+      "step": {
+        "user": {
+          "title": "FCU Device Setup",
+          "description": "Enter the name and IP address of your FCU device.",
+          "data": {
+            "name": "Device Name",
+            "ip_address": "IP Address"
+          }
         }
+      },
+      "error": {
+        "invalid_ip": "The IP address is invalid."
+      }
     }
-}
+  }
+  
