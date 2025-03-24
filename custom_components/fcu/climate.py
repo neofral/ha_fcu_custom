@@ -1,16 +1,12 @@
 """FCU Climate Entity."""
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
-    HVAC_MODE_OFF,
-    HVAC_MODE_COOL,
-    HVAC_MODE_HEAT,
-    HVAC_MODE_FAN_ONLY,
+    HVACMode,
     FAN_LOW,
     FAN_MEDIUM,
     FAN_HIGH,
     FAN_AUTO,
-    SUPPORT_TARGET_TEMPERATURE,
-    SUPPORT_FAN_MODE,
+    ClimateEntityFeature,
 )
 from homeassistant.const import TEMP_CELSIUS
 
@@ -23,7 +19,7 @@ class FCUClimateEntity(ClimateEntity):
         self._current_temperature = None
         self._target_temperature = None
         self._fan_mode = FAN_AUTO
-        self._hvac_mode = HVAC_MODE_OFF
+        self._hvac_mode = HVACMode.OFF
         self._attr_should_poll = False
 
     async def async_added_to_hass(self):
@@ -58,7 +54,7 @@ class FCUClimateEntity(ClimateEntity):
 
     @property
     def supported_features(self):
-        return SUPPORT_TARGET_TEMPERATURE | SUPPORT_FAN_MODE
+        return ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.FAN_MODE
 
     @property
     def fan_modes(self):
@@ -66,7 +62,7 @@ class FCUClimateEntity(ClimateEntity):
 
     @property
     def hvac_modes(self):
-        return [HVAC_MODE_OFF, HVAC_MODE_COOL, HVAC_MODE_HEAT, HVAC_MODE_FAN_ONLY]
+        return [HVACMode.OFF, HVACMode.COOL, HVACMode.HEAT, HVACMode.FAN_ONLY]
 
     def update(self):
         """Fetch the latest data from the device."""
