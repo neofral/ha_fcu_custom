@@ -8,7 +8,7 @@ from homeassistant.components.climate.const import (
     FAN_AUTO,
     ClimateEntityFeature,
 )
-from homeassistant.const import TEMP_CELSIUS
+from homeassistant.const import UnitOfTemperature
 
 class FCUClimateEntity(ClimateEntity):
     """Representation of an FCU climate entity."""
@@ -34,7 +34,7 @@ class FCUClimateEntity(ClimateEntity):
 
     @property
     def temperature_unit(self):
-        return TEMP_CELSIUS
+        return UnitOfTemperature.CELSIUS
 
     @property
     def current_temperature(self):
