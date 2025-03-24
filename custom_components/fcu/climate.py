@@ -27,6 +27,7 @@ class FCUClimateEntity(ClimateEntity):
         self._fan_mode = FAN_AUTO
         self._hvac_mode = HVACMode.OFF
         self._attr_should_poll = False
+        self._unique_id = f"{ip_address}_climate"
 
     async def async_added_to_hass(self):
         """Run when entity is added to hass."""
@@ -70,6 +71,11 @@ class FCUClimateEntity(ClimateEntity):
     def hvac_modes(self):
         return [HVACMode.OFF, HVACMode.COOL, HVACMode.HEAT, HVACMode.FAN_ONLY]
 
+    @property
+    def unique_id(self):
+        """Return a unique ID for this entity."""
+        return self._unique_id
+
     def update(self):
         """Fetch the latest data from the device."""
         # Replace with actual REST API logic using self._ip_address
@@ -82,6 +88,8 @@ async def async_setup_entry(
     data = hass.data["fcu"][entry.entry_id]
     name = data["name"]
     ip_address = data["ip_address"]
+
+    _LOGGER.info("Creating FCUClimateEntity for name: %s, IP: %s", name, ip_address)
 
     # Create and add the climate entity
     async_add_entities([FCUClimateEntity(name, ip_address)])

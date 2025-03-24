@@ -11,6 +11,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Setting up FCU integration for device: %s", entry.data["name"])
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = entry.data
+    _LOGGER.info("Forwarding entry setup to climate platform.")
     await hass.config_entries.async_forward_entry_setups(entry, ["climate"])
     return True
 
