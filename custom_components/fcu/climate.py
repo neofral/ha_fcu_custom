@@ -1,4 +1,5 @@
 """FCU Climate Entity."""
+import logging
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     HVACMode,
@@ -12,6 +13,8 @@ from homeassistant.const import UnitOfTemperature
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+
+_LOGGER = logging.getLogger(__name__)
 
 class FCUClimateEntity(ClimateEntity):
     """Representation of an FCU climate entity."""
