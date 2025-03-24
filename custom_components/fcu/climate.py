@@ -24,6 +24,13 @@ class FCUClimateEntity(ClimateEntity):
         self._target_temperature = None
         self._fan_mode = FAN_AUTO
         self._hvac_mode = HVAC_MODE_OFF
+        self._attr_should_poll = False
+
+    async def async_added_to_hass(self):
+        """Run when entity is added to hass."""
+        _LOGGER.info("FCUClimateEntity added to Home Assistant: %s", self._name)
+        # Initialize or fetch data here
+        await self.async_update_ha_state()
 
     @property
     def name(self):

@@ -13,6 +13,19 @@
       "error": {
         "invalid_ip": "The IP address is invalid."
       }
+    },
+    "services": {
+        "set_temperature": {
+            "name": "Set Temperature",
+            "description": "Set the target temperature of the climate device."
+        },
+        "set_fan_mode": {
+            "name": "Set Fan Mode",
+            "description": "Set the fan mode of the climate device."
+        },
+        "set_hvac_mode": {
+            "name": "Set HVAC Mode",
+            "description": "Set the operating mode of the climate device."
+        }
     }
-  }
-  
+}

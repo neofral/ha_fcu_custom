@@ -1,7 +1,7 @@
 {
     "domain": "fcu",
     "name": "FCU Climate Integration",
-    "documentation": "https://github.com/yourusername/ha_fcu_custom",
+    "documentation": "https://github.com/neofral/ha_fcu_custom",
     "requirements": [],
     "codeowners": ["@neofral"],
     "version": "1.0.2",
