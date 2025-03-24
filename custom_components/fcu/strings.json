@@ -1,0 +1,7 @@
+{
+    "title": "Custom FCU Climate",
+    "options": {
+        "name": "Device Name",
+        "ip_address": "IP Address"
+    }
+}
