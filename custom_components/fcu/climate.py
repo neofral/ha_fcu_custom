@@ -9,6 +9,9 @@ from homeassistant.components.climate.const import (
     ClimateEntityFeature,
 )
 from homeassistant.const import UnitOfTemperature
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 
 class FCUClimateEntity(ClimateEntity):
     """Representation of an FCU climate entity."""
@@ -68,3 +71,14 @@ class FCUClimateEntity(ClimateEntity):
         """Fetch the latest data from the device."""
         # Replace with actual REST API logic using self._ip_address
         pass
+
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+):
+    """Set up FCU climate platform from a config entry."""
+    data = hass.data["fcu"][entry.entry_id]
+    name = data["name"]
+    ip_address = data["ip_address"]
+
+    # Create and add the climate entity
+    async_add_entities([FCUClimateEntity(name, ip_address)])
