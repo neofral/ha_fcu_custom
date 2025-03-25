@@ -7,6 +7,5 @@
     "homeassistant": "2023.1.0",
     "zip_release": false,
     "iot_class": "Local Polling",
-    "icon": "https://raw.githubusercontent.com/neofral/ha_fcu_custom/main/icon.png"
+    "icon": "https://raw.githubusercontent.com/neofral/ha_fcu_custom/main/logo.png"
 }
-  
