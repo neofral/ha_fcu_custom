@@ -8,6 +8,5 @@
     "codeowners": ["@neofral"],
     "config_flow": true,
     "iot_class": "local_polling",
-    "integration_type": "device",
-    "icon": "custom_components/fcu/icon.png"
+    "integration_type": "device"
 }
