@@ -160,6 +160,12 @@ class FCUClimate(ClimateEntity):
                 "room_temperature_2": self._temp2,
             })
             
+            # Store sensor data in hass.data for sensors to access
+            self.hass.data[DOMAIN]["sensor_data"] = {
+                "rt": self._temperature,
+                "wt": self._water_temp
+            }
+            
             # Get operation mode
             operation_mode = str(data.get("operation_mode", "0"))
             prev_mode = self._hvac_mode  # Store previous mode

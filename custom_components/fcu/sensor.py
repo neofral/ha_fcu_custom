@@ -44,18 +44,12 @@ class FCUTemperatureSensor(SensorEntity):
 
     async def async_update(self):
         """Get the latest data from the sensor."""
-        climate_entity = next(
-            (
-                entity
-                for entity in self.hass.data[DOMAIN].values()
-                if isinstance(entity, dict) and "climate" in entity
-            ),
-            None,
-        )
+        sensor_data = self.hass.data[DOMAIN].get("sensor_data", {})
         
-        if climate_entity and "climate" in climate_entity:
-            climate = climate_entity["climate"]
-            if self._sensor_type == "Room":
-                self._state = climate._temperature
-            elif self._sensor_type == "Water":
-                self._state = climate._water_temp
+        if self._sensor_type == "Room":
+            self._state = sensor_data.get("rt")
+        elif self._sensor_type == "Water":
+            self._state = sensor_data.get("wt")
+
+        if self._state is not None:
+            self._state = round(float(self._state), 1)
