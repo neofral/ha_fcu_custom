@@ -11,14 +11,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Setting up FCU integration for device: %s", entry.data["name"])
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = entry.data
-    _LOGGER.info("Forwarding entry setup to climate platform.")
-    await hass.config_entries.async_forward_entry_setups(entry, ["climate"])
+    _LOGGER.info("Forwarding entry setup to sensor platform.")
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.info("Unloading FCU integration for device: %s", entry.data["name"])
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["climate"])
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok
