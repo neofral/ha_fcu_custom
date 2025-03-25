@@ -1,5 +1,5 @@
 {
-    "domain": "fcu_integration",
+    "domain": "fcu",
     "name": "Eko Energis FCU Integration",
     "version": "2.0",
     "documentation": "https://github.com/neofral/ha_fcu_custom",
