@@ -2,8 +2,11 @@
     "domain": "fcu_integration",
     "name": "Eko Energis FCU Integration",
     "version": "2.0",
-    "documentation": "hhttps://github.com/neofral/ha_fcu_custom",
+    "documentation": "https://github.com/neofral/ha_fcu_custom",
     "requirements": [],
     "dependencies": [],
-    "codeowners": ["@neofral"]
-  }
+    "codeowners": ["@neofral"],
+    "config_flow": true,
+    "iot_class": "local_polling",
+    "integration_type": "device"
+}
