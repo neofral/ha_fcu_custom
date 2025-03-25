@@ -9,6 +9,7 @@ from homeassistant.const import (
     ATTR_TEMPERATURE,
 )
 import aiohttp
+import asyncio  # Add this import
 import logging
 from .const import DOMAIN
 
@@ -52,6 +53,17 @@ class FCUClimate(ClimateEntity):
             ClimateEntityFeature.TARGET_TEMPERATURE 
             | ClimateEntityFeature.FAN_MODE
         )
+        self._fan_mode_cooling = "auto"
+        self._fan_mode_heating = "auto"
+        self._fan_mode_fan = "auto"
+        self._cooling_temp = 21
+        self._heating_temp = 23
+        self._attr_min_temp = 16
+        self._attr_max_temp = 30
+        self._attr_precision = 0.1
+        self._attr_target_temperature_step = 0.1
+        self._target_temp_high = 0.3  # Cooling hysteresis
+        self._target_temp_low = 0.3   # Heating hysteresis
 
     async def async_update(self):
         """Fetch new state data for the entity."""
@@ -137,35 +149,57 @@ class FCUClimate(ClimateEntity):
     def _parse_device_state(self, data):
         """Parse the state data from the device."""
         try:
-            # Parse temperatures
-            self._temperature = float(data.get("rt", 0))  # Room temperature
-            self._water_temp = float(data.get("wt", 0))  # Water temperature
-            self._temp2 = float(data.get("t3", 0))  # Room temperature 2
+            # Parse temperatures with 1 decimal precision
+            self._temperature = round(float(data.get("rt", 0)), 1)  # Room temperature
+            self._water_temp = round(float(data.get("wt", 0)), 1)  # Water temperature
+            self._temp2 = round(float(data.get("t3", 0)), 1)  # Room temperature 2
+            
+            # Store temperatures in attributes with same precision
+            self._attributes.update({
+                "water_temperature": self._water_temp,
+                "room_temperature_2": self._temp2,
+            })
             
             # Get operation mode
             operation_mode = str(data.get("operation_mode", "0"))
+            prev_mode = self._hvac_mode  # Store previous mode
             self._hvac_mode = self._map_operation_mode(operation_mode)
             
-            # Get mode-specific temperatures and fan speeds
-            self._cooling_temp = float(data.get("required_temp_cooling", 22))
-            self._heating_temp = float(data.get("required_temp_heating", 22))
+            # Store mode-specific temperatures from device
+            cooling_temp = data.get("required_temp_cooling")
+            heating_temp = data.get("required_temp_heating")
+            
+            if cooling_temp is not None:
+                self._cooling_temp = float(cooling_temp)
+            if heating_temp is not None:
+                self._heating_temp = float(heating_temp)
             
             # Set target temperature based on mode
             if self._hvac_mode == HVACMode.COOL:
                 self._target_temperature = self._cooling_temp
-                self._fan_mode = self._map_fan_speed(data.get("fan_state_current_cooling", "3"))
             elif self._hvac_mode == HVACMode.HEAT:
                 self._target_temperature = self._heating_temp
-                self._fan_mode = self._map_fan_speed(data.get("fan_state_current_heating", "3"))
-            elif self._hvac_mode == HVACMode.FAN_ONLY:
-                self._fan_mode = self._map_fan_speed(data.get("fan_state_current_fan", "3"))
-            
-            # Store all temperatures in attributes for debugging
+
+            # Only update fan modes if we haven't just changed them
+            if not hasattr(self, '_fan_mode_updating'):
+                self._fan_mode_cooling = self._map_fan_speed(data.get("fan_state_current_cooling", "3"))
+                self._fan_mode_heating = self._map_fan_speed(data.get("fan_state_current_heating", "3"))
+                self._fan_mode_fan = self._map_fan_speed(data.get("fan_state_current_fan", "3"))
+                
+                # Update current fan mode only if mode changed
+                if prev_mode != self._hvac_mode:
+                    if self._hvac_mode == HVACMode.COOL:
+                        self._fan_mode = self._fan_mode_cooling
+                    elif self._hvac_mode == HVACMode.HEAT:
+                        self._fan_mode = self._fan_mode_heating
+                    elif self._hvac_mode == HVACMode.FAN_ONLY:
+                        self._fan_mode = self._fan_mode_fan
+
+            # Store fan states in attributes
             self._attributes.update({
-                "water_temperature": self._water_temp,
-                "room_temperature_2": self._temp2,
-                "cooling_temperature": self._cooling_temp,
-                "heating_temperature": self._heating_temp
+                "fan_mode_cooling": self._fan_mode_cooling,
+                "fan_mode_heating": self._fan_mode_heating,
+                "fan_mode_fan": self._fan_mode_fan
             })
             
             # Update HVAC action
@@ -184,6 +218,10 @@ class FCUClimate(ClimateEntity):
                          
         except Exception as ex:
             _LOGGER.error("Error parsing device state: %s. Data: %s", ex, data)
+        finally:
+            # Clear the fan mode updating flag
+            if hasattr(self, '_fan_mode_updating'):
+                delattr(self, '_fan_mode_updating')
 
     def _map_operation_mode(self, mode):
         """Map device operation mode to HVACMode."""
@@ -250,6 +288,20 @@ class FCUClimate(ClimateEntity):
         return self._target_temperature
 
     @property
+    def target_temperature_high(self):
+        """Return the upper bound temperature we try to reach."""
+        if self._hvac_mode == HVACMode.COOL and self._target_temperature is not None:
+            return self._target_temperature + self._target_temp_high
+        return None
+
+    @property
+    def target_temperature_low(self):
+        """Return the lower bound temperature we try to reach."""
+        if self._hvac_mode == HVACMode.HEAT and self._target_temperature is not None:
+            return self._target_temperature - self._target_temp_low
+        return None
+
+    @property
     def hvac_mode(self):
         """Return the current HVAC mode."""
         return self._hvac_mode
@@ -283,6 +335,16 @@ class FCUClimate(ClimateEntity):
     def extra_state_attributes(self):
         """Return additional state attributes."""
         return self._attributes
+
+    @property
+    def min_temp(self):
+        """Return the minimum temperature."""
+        return self._attr_min_temp
+
+    @property
+    def max_temp(self):
+        """Return the maximum temperature."""
+        return self._attr_max_temp
 
     async def async_set_temperature(self, **kwargs):
         """Set new target temperature."""
@@ -338,35 +400,58 @@ class FCUClimate(ClimateEntity):
         device_data = {}
 
         # Handle temperature
-        if current_mode == HVACMode.COOL:
-            temp = str(self._cooling_temp)
-        elif current_mode == HVACMode.HEAT:
-            temp = str(self._heating_temp)
-        else:
-            temp = str(self._target_temperature if self._target_temperature is not None else 22)
-
         if "temperature" in control_data:
             temp = str(control_data["temperature"])
+            # Store temperature for the current mode
             if current_mode == HVACMode.COOL:
                 self._cooling_temp = float(temp)
             elif current_mode == HVACMode.HEAT:
                 self._heating_temp = float(temp)
+            self._target_temperature = float(temp)
+        else:
+            # Use stored temperature for the mode
+            if current_mode == HVACMode.COOL:
+                temp = str(self._cooling_temp)
+            elif current_mode == HVACMode.HEAT:
+                temp = str(self._heating_temp)
+            else:
+                temp = str(self._target_temperature if self._target_temperature is not None else 22)
 
         # Add required parameters
         device_data["required_mode"] = self._reverse_map_hvac_mode(current_mode)
         device_data["required_temp"] = temp
-        
-        # Handle fan speed - send the right parameter based on operation mode
-        if "fan_mode" in control_data:
-            fan_speed = self._reverse_map_fan_speed(control_data["fan_mode"])
+
+        # Update target temperature based on new mode
+        if "hvac_mode" in control_data:
             if current_mode == HVACMode.COOL:
+                self._target_temperature = self._cooling_temp
+            elif current_mode == HVACMode.HEAT:
+                self._target_temperature = self._heating_temp
+
+        # Handle fan speed changes
+        if "fan_mode" in control_data:
+            # Set flag to prevent immediate fan mode override
+            self._fan_mode_updating = True
+            new_fan_mode = control_data["fan_mode"]
+            fan_speed = self._reverse_map_fan_speed(new_fan_mode)
+            device_data["required_speed"] = fan_speed
+            
+            # Update mode-specific fan state and current fan mode
+            if current_mode == HVACMode.COOL:
+                self._fan_mode_cooling = new_fan_mode
                 device_data["fan_state_current_cooling"] = fan_speed
             elif current_mode == HVACMode.HEAT:
+                self._fan_mode_heating = new_fan_mode
                 device_data["fan_state_current_heating"] = fan_speed
             elif current_mode == HVACMode.FAN_ONLY:
+                self._fan_mode_fan = new_fan_mode
                 device_data["fan_state_current_fan"] = fan_speed
-            device_data["required_speed"] = fan_speed
+
+            # Update current fan mode immediately
+            self._fan_mode = new_fan_mode
+            self.async_write_ha_state()
         else:
+            # Use current fan mode if not changing
             device_data["required_speed"] = self._reverse_map_fan_speed(self._fan_mode)
 
         # Build payload string with leading &
@@ -389,6 +474,19 @@ class FCUClimate(ClimateEntity):
                     if response.status != 200:
                         raise aiohttp.ClientError(f"Invalid response status: {response.status}")
 
+            # Update attributes after successful control command
+            self._attributes.update({
+                "fan_mode_cooling": self._fan_mode_cooling,
+                "fan_mode_heating": self._fan_mode_heating,
+                "fan_mode_fan": self._fan_mode_fan
+            })
+            self.async_write_ha_state()
+            
+            # Force an immediate state update after control command
+            await self._fetch_device_state()
+            
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            if hasattr(self, '_fan_mode_updating'):
+                delattr(self, '_fan_mode_updating')
             _LOGGER.error("Failed to send control command to %s: %s", self._name, str(err))
             raise
