@@ -86,7 +86,17 @@ class FCUClimateEntity(ClimateEntity):
         """Set the HVAC mode."""
         _LOGGER.info("Setting HVAC mode to %s for %s", hvac_mode, self._name)
         try:
-            # Replace with actual logic to send the HVAC mode to the device
+            payload = f"&required_temp={self._target_temperature}&required_mode={hvac_mode}&required_speed={self._fan_mode}"
+            response = requests.post(
+                f"http://{self._ip_address}/wifi/setmode",
+                headers={
+                    "Authorization": f"Bearer {self._token}",
+                    "X-Requested-With": "myApp",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                data=payload,
+            )
+            response.raise_for_status()
             self._hvac_mode = hvac_mode
             await self.async_update_ha_state()
         except Exception as e:
@@ -101,7 +111,17 @@ class FCUClimateEntity(ClimateEntity):
             return
         _LOGGER.info("Setting target temperature to %s for %s", temperature, self._name)
         try:
-            # Replace with actual logic to send the temperature to the device
+            payload = f"&required_temp={temperature}&required_mode={self._hvac_mode}&required_speed={self._fan_mode}"
+            response = requests.post(
+                f"http://{self._ip_address}/wifi/setmode",
+                headers={
+                    "Authorization": f"Bearer {self._token}",
+                    "X-Requested-With": "myApp",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                data=payload,
+            )
+            response.raise_for_status()
             self._target_temperature = temperature
             await self.async_update_ha_state()
         except Exception as e:
@@ -112,7 +132,17 @@ class FCUClimateEntity(ClimateEntity):
         """Set the fan mode."""
         _LOGGER.info("Setting fan mode to %s for %s", fan_mode, self._name)
         try:
-            # Replace with actual logic to send the fan mode to the device
+            payload = f"&required_temp={self._target_temperature}&required_mode={self._hvac_mode}&required_speed={fan_mode}"
+            response = requests.post(
+                f"http://{self._ip_address}/wifi/setmode",
+                headers={
+                    "Authorization": f"Bearer {self._token}",
+                    "X-Requested-With": "myApp",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                data=payload,
+            )
+            response.raise_for_status()
             self._fan_mode = fan_mode
             await self.async_update_ha_state()
         except Exception as e:
@@ -123,7 +153,14 @@ class FCUClimateEntity(ClimateEntity):
         """Fetch the latest data from the device."""
         _LOGGER.info("Updating data for %s", self._name)
         try:
-            response = requests.get(f"http://{self._ip_address}/status")
+            # Update the token before making the request
+            self._update_token()
+
+            # Fetch the latest status from the device
+            response = requests.get(
+                f"http://{self._ip_address}/status",
+                headers={"Authorization": f"Bearer {self._token}"},  # Use the token
+            )
             response.raise_for_status()
             data = response.json()
             self._current_temperature = data["current_temperature"]
@@ -131,9 +168,30 @@ class FCUClimateEntity(ClimateEntity):
             self._fan_mode = data["fan_mode"]
             self._hvac_mode = data["hvac_mode"]
             self._available = True
-            pass
         except Exception as e:
             _LOGGER.error("Failed to update data: %s", e)
+            self._available = False
+
+    def _update_token(self):
+        """Update the authentication token."""
+        try:
+            _LOGGER.info("Updating token for %s", self._name)
+            # Send a POST request to fetch the token
+            response = requests.post(
+                f"http://{self._ip_address}/login.htm",
+                headers={
+                    "X-Requested-With": "myApp",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                data="username=admin&password=d033e22ae348aeb5660fc2140aec35850c4da997",
+            )
+            response.raise_for_status()
+            # Extract the token from the response (adjust this based on the actual response format)
+            self._token = response.text.strip()  # Assuming the token is returned as plain text
+            if not self._token:
+                raise ValueError("Failed to retrieve access token")
+        except Exception as e:
+            _LOGGER.error("Failed to update token: %s", e)
             self._available = False
 
 async def async_setup_entry(
