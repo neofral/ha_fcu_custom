@@ -9,5 +9,5 @@
     "config_flow": true,
     "iot_class": "local_polling",
     "integration_type": "device",
-    "icon": "https://raw.githubusercontent.com/neofral/ha_fcu_custom/main/icon.png"
+    "icon": "custom_components/fcu/icon.png"
 }
