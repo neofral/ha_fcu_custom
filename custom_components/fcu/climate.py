@@ -142,23 +142,30 @@ class FCUClimate(ClimateEntity):
             self._water_temp = float(data.get("wt", 0))  # Water temperature
             self._temp2 = float(data.get("t3", 0))  # Room temperature 2
             
-            # Get operation mode and set target temp based on mode
+            # Get operation mode
             operation_mode = str(data.get("operation_mode", "0"))
             self._hvac_mode = self._map_operation_mode(operation_mode)
             
+            # Get mode-specific temperatures and fan speeds
+            self._cooling_temp = float(data.get("required_temp_cooling", 22))
+            self._heating_temp = float(data.get("required_temp_heating", 22))
+            
             # Set target temperature based on mode
             if self._hvac_mode == HVACMode.COOL:
-                self._target_temperature = float(data.get("required_temp_cooling", 0))
-                self._fan_mode = self._map_fan_speed(data.get("fan_state_current_cooling", "0"))
+                self._target_temperature = self._cooling_temp
+                self._fan_mode = self._map_fan_speed(data.get("fan_state_current_cooling", "3"))
             elif self._hvac_mode == HVACMode.HEAT:
-                self._target_temperature = float(data.get("required_temp_heating", 0))
-                self._fan_mode = self._map_fan_speed(data.get("fan_state_current_heating", "0"))
+                self._target_temperature = self._heating_temp
+                self._fan_mode = self._map_fan_speed(data.get("fan_state_current_heating", "3"))
             elif self._hvac_mode == HVACMode.FAN_ONLY:
-                self._fan_mode = self._map_fan_speed(data.get("fan_state_current_fan", "0"))
+                self._fan_mode = self._map_fan_speed(data.get("fan_state_current_fan", "3"))
             
+            # Store all temperatures in attributes for debugging
             self._attributes.update({
                 "water_temperature": self._water_temp,
                 "room_temperature_2": self._temp2,
+                "cooling_temperature": self._cooling_temp,
+                "heating_temperature": self._heating_temp
             })
             
             # Update HVAC action
@@ -326,20 +333,46 @@ class FCUClimate(ClimateEntity):
             "X-Requested-With": "myApp"
         }
 
-        # Build payload string
-        payload_parts = []
+        # Get current mode and build basic payload
+        current_mode = control_data.get("hvac_mode", self._hvac_mode)
+        device_data = {}
+
+        # Handle temperature
+        if current_mode == HVACMode.COOL:
+            temp = str(self._cooling_temp)
+        elif current_mode == HVACMode.HEAT:
+            temp = str(self._heating_temp)
+        else:
+            temp = str(self._target_temperature if self._target_temperature is not None else 22)
+
         if "temperature" in control_data:
-            payload_parts.append(f"required_temp={control_data['temperature']}")
-        if "hvac_mode" in control_data:
-            payload_parts.append(f"required_mode={self._reverse_map_hvac_mode(control_data['hvac_mode'])}")
+            temp = str(control_data["temperature"])
+            if current_mode == HVACMode.COOL:
+                self._cooling_temp = float(temp)
+            elif current_mode == HVACMode.HEAT:
+                self._heating_temp = float(temp)
+
+        # Add required parameters
+        device_data["required_mode"] = self._reverse_map_hvac_mode(current_mode)
+        device_data["required_temp"] = temp
+        
+        # Handle fan speed - send the right parameter based on operation mode
         if "fan_mode" in control_data:
-            payload_parts.append(f"required_speed={self._reverse_map_fan_speed(control_data['fan_mode'])}")
+            fan_speed = self._reverse_map_fan_speed(control_data["fan_mode"])
+            if current_mode == HVACMode.COOL:
+                device_data["fan_state_current_cooling"] = fan_speed
+            elif current_mode == HVACMode.HEAT:
+                device_data["fan_state_current_heating"] = fan_speed
+            elif current_mode == HVACMode.FAN_ONLY:
+                device_data["fan_state_current_fan"] = fan_speed
+            device_data["required_speed"] = fan_speed
+        else:
+            device_data["required_speed"] = self._reverse_map_fan_speed(self._fan_mode)
 
-        payload = "&".join(payload_parts)
-        if payload:
-            payload = "&" + payload  # Add leading & as per your example
-
-        _LOGGER.debug("Sending control payload: %s", payload)
+        # Build payload string with leading &
+        payload = "&" + "&".join(f"{k}={v}" for k, v in device_data.items())
+        
+        _LOGGER.debug("Sending control payload: %s for mode: %s", payload, current_mode)
 
         try:
             async with aiohttp.ClientSession() as session:
