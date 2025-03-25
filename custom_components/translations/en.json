@@ -1,0 +1,23 @@
+{
+    "title": "Fan Coil Unit Integration",
+    "config": {
+    "step": {
+        "user": {
+        "title": "Set up your Fan Coil Unit",
+        "description": "Enter the name and IP address of your fan coil unit.",
+        "data": {
+            "name": "Device Name",
+            "ip_address": "IP Address"
+        }
+        }
+    }
+    },
+    "options": {
+    "step": {
+        "init": {
+        "title": "Options for Fan Coil Unit",
+        "description": "Adjust additional settings for your fan coil unit."
+        }
+    }
+    }
+}
