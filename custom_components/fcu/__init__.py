@@ -1,24 +1,18 @@
-"""FCU integration."""
-import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from .const import DOMAIN
 
-DOMAIN = "fcu"
-_LOGGER = logging.getLogger(__name__)
-
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up FCU from a config entry."""
-    _LOGGER.info("Setting up FCU integration for device: %s", entry.data["name"])
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
+    name = entry.data["name"]
+    ip_address = entry.data["ip_address"]
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = entry.data
-    _LOGGER.info("Forwarding entry setup to sensor platform.")
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+    hass.data[DOMAIN][entry.entry_id] = {"name": name, "ip_address": ip_address}
+    hass.async_create_task(
+        hass.config_entries.async_forward_entry_setup(entry, "climate")
+    )
     return True
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    _LOGGER.info("Unloading FCU integration for device: %s", entry.data["name"])
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-    return unload_ok
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
+    await hass.config_entries.async_forward_entry_unload(entry, "climate")
+    hass.data[DOMAIN].pop(entry.entry_id)
+    return True
