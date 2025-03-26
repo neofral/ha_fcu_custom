@@ -29,8 +29,12 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     name = config_entry.data["name"]
     ip_address = config_entry.data["ip_address"]
 
-    # Add the climate entity with unique initialization
-    async_add_entities([FCUClimate(name, ip_address)], True)
+    climate_entity = FCUClimate(name, ip_address)
+    async_add_entities([climate_entity], True)
+    
+    # Store climate entity in hass.data for sensors to access
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][name] = climate_entity
 
 class FCUClimate(ClimateEntity):
     """Representation of a fan coil unit as a climate entity."""
@@ -40,6 +44,8 @@ class FCUClimate(ClimateEntity):
         self._name = name
         self._ip_address = ip_address
         self._temperature = None
+        self._water_temp = None
+        self._temp2 = None
         self._target_temperature = None
         self._hvac_mode = HVACMode.OFF
         self._hvac_action = HVACAction.IDLE
@@ -347,7 +353,6 @@ class FCUClimate(ClimateEntity):
         """Return device specific state attributes."""
         return {
             f"{self._name}_water_temperature": self._water_temp,
-            f"{self._name}_room_temperature_2": self._temp2,
             f"{self._name}_fan_mode_cooling": self._fan_mode_cooling,
             f"{self._name}_fan_mode_heating": self._fan_mode_heating,
             f"{self._name}_fan_mode_fan": self._fan_mode_fan,

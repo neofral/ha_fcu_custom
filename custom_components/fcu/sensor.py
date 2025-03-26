@@ -1,55 +1,61 @@
-"""Support for FCU sensors."""
+"""Support for FCU temperature sensors."""
 from homeassistant.components.sensor import (
-    SensorEntity,
     SensorDeviceClass,
+    SensorEntity,
     SensorStateClass,
 )
 from homeassistant.const import UnitOfTemperature
-from .const import DOMAIN, ROOM_TEMP_SENSOR, WATER_TEMP_SENSOR
+from .const import DOMAIN
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Set up the FCU sensors."""
+    """Set up the FCU temperature sensors."""
     name = config_entry.data["name"]
-    ip_address = config_entry.data["ip_address"]
+    climate = hass.data[DOMAIN][name]  # Get climate entity by name
 
     sensors = [
-        FCUTemperatureSensor(name, ip_address, "Room", ROOM_TEMP_SENSOR),
-        FCUTemperatureSensor(name, ip_address, "Water", WATER_TEMP_SENSOR),
+        FCUTemperatureSensor(
+            name,
+            climate,
+            "Room Temperature",
+            "_temperature"
+        ),
+        FCUTemperatureSensor(
+            name,
+            climate,
+            "Water Temperature",
+            "_water_temp"
+        ),
     ]
+
     async_add_entities(sensors, True)
 
 class FCUTemperatureSensor(SensorEntity):
     """Representation of an FCU Temperature Sensor."""
 
-    def __init__(self, name, ip_address, sensor_type, entity_id):
+    def __init__(self, device_name, climate_entity, description, attr_name):
         """Initialize the sensor."""
-        self._name = f"{name} {sensor_type} Temperature"
-        self._ip_address = ip_address
-        self._sensor_type = sensor_type
-        self._state = None
         self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_unique_id = f"{name.lower()}_{entity_id}"
-
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return self._name
+        self._device_name = device_name
+        self._attr_unique_id = f"{device_name}_{description.lower().replace(' ', '_')}"
+        self._attr_name = f"{device_name} {description}"
+        self._climate = climate_entity
+        self._attr = attr_name
 
     @property
     def native_value(self):
-        """Return the state of the sensor."""
-        return self._state
+        """Return the temperature value."""
+        if self._climate:
+            return getattr(self._climate, self._attr, None)
+        return None
 
-    async def async_update(self):
-        """Get the latest data from the sensor."""
-        sensor_data = self.hass.data[DOMAIN].get("sensor_data", {})
-        
-        if self._sensor_type == "Room":
-            self._state = sensor_data.get("rt")
-        elif self._sensor_type == "Water":
-            self._state = sensor_data.get("wt")
-
-        if self._state is not None:
-            self._state = round(float(self._state), 1)
+    @property
+    def device_info(self):
+        """Return device info."""
+        return {
+            "identifiers": {(DOMAIN, self._device_name)},
+            "name": self._device_name,
+            "manufacturer": "Eko Energis + Cotronika",
+            "model": "FCU Controller v.0.0.3RD",
+        }
