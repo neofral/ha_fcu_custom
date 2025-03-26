@@ -15,10 +15,8 @@ class FCUConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            # Check if device already configured
-            await self.async_set_unique_id(
-                f"{user_input[CONF_IP_ADDRESS]}_{user_input[CONF_NAME]}"
-            )
+            # Check if device already configured using only name
+            await self.async_set_unique_id(user_input[CONF_NAME])
             self._abort_if_unique_id_configured()
 
             # Validate connection

@@ -36,6 +36,7 @@ class FCUClimate(ClimateEntity):
     """Representation of a fan coil unit as a climate entity."""
 
     def __init__(self, name, ip_address):
+        self._attr_unique_id = name  # Changed from f"{ip_address}_{name}"
         self._name = name
         self._ip_address = ip_address
         self._temperature = None
@@ -160,12 +161,6 @@ class FCUClimate(ClimateEntity):
                 "room_temperature_2": self._temp2,
             })
             
-            # Store sensor data in hass.data for sensors to access
-            self.hass.data[DOMAIN]["sensor_data"] = {
-                "rt": self._temperature,
-                "wt": self._water_temp
-            }
-            
             # Get operation mode
             operation_mode = str(data.get("operation_mode", "0"))
             prev_mode = self._hvac_mode  # Store previous mode
@@ -219,9 +214,9 @@ class FCUClimate(ClimateEntity):
                 self._hvac_action = HVACAction.FAN
             
             _LOGGER.debug("Parsed state - Mode: %s, Action: %s, Temp: %s, Target: %s, Fan: %s",
-                         self._hvac_mode, self._hvac_action, self._temperature,
-                         self._target_temperature, self._fan_mode)
-                         
+                    self._hvac_mode, self._hvac_action, self._temperature,
+                    self._target_temperature, self._fan_mode)
+
         except Exception as ex:
             _LOGGER.error("Error parsing device state: %s. Data: %s", ex, data)
         finally:
@@ -274,9 +269,19 @@ class FCUClimate(ClimateEntity):
         return self._name
 
     @property
+    def device_info(self):
+        """Return device info."""
+        return {
+            "identifiers": {(DOMAIN, self._attr_unique_id)},
+            "name": self._name,
+            "manufacturer": "Eko Energis + Cotronika",
+            "model": "FCU Controller v.0.0.3RD",
+        }
+
+    @property
     def unique_id(self):
-        """Return a unique ID for the climate entity."""
-        return f"{self._name.lower().replace(' ', '_')}_climate"
+        """Return unique ID for this device."""
+        return self._attr_unique_id
 
     @property
     def temperature_unit(self):
@@ -339,8 +344,14 @@ class FCUClimate(ClimateEntity):
 
     @property
     def extra_state_attributes(self):
-        """Return additional state attributes."""
-        return self._attributes
+        """Return device specific state attributes."""
+        return {
+            f"{self._name}_water_temperature": self._water_temp,
+            f"{self._name}_room_temperature_2": self._temp2,
+            f"{self._name}_fan_mode_cooling": self._fan_mode_cooling,
+            f"{self._name}_fan_mode_heating": self._fan_mode_heating,
+            f"{self._name}_fan_mode_fan": self._fan_mode_fan,
+        }
 
     @property
     def min_temp(self):
