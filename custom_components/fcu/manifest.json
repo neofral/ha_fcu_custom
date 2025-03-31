@@ -1,7 +1,7 @@
 {
     "domain": "fcu",
     "name": "Eko Energis FCU Integration",
-    "version": "3.0",
+    "version": "3.1",
     "documentation": "https://github.com/neofral/ha_fcu_custom",
     "requirements": [],
     "dependencies": [],
