@@ -76,6 +76,8 @@ class FCUClimate(ClimateEntity):
         self._attr_target_temperature_step = 0.1
         self._target_temp_high = 0.3  # Cooling hysteresis
         self._target_temp_low = 0.3   # Heating hysteresis
+        self._device_status = None
+        self._error_index = None
 
     async def async_update(self):
         """Fetch new state data for the entity."""
@@ -164,7 +166,11 @@ class FCUClimate(ClimateEntity):
             # Parse temperatures with 1 decimal precision
             self._temperature = round(float(data.get("rt", 0)), 1)  # Room temperature
             self._water_temp = round(float(data.get("wt", 0)), 1)  # Water temperature
-            self._temp2 = round(float(data.get("t3", 0)), 1)  # Room temperature 2
+            self._device_status = round(float(data.get("device_status", 0)), 1)  # Device status
+            self._error_index = round(float(data.get("error_index", 0)), 1)  # Error index
+#            self._temp2 = round(float(data.get("t3", 0)), 1)  # Room temperature 2
+#            self._device_status = str(data.get("device_status", ""))  # Device status
+#            self._error_index = str(data.get("error_index", ""))  # Error index
             
             # Store temperatures in attributes with same precision
             self._attributes.update({
@@ -214,13 +220,19 @@ class FCUClimate(ClimateEntity):
                 "fan_mode_fan": self._fan_mode_fan
             })
             
-            # Update HVAC action
+            # Update HVAC action based on mode and device status
             if self._hvac_mode == HVACMode.OFF:
                 self._hvac_action = HVACAction.OFF
             elif self._hvac_mode == HVACMode.HEAT:
-                self._hvac_action = HVACAction.HEATING if self._temperature < self._target_temperature else HVACAction.IDLE
+                if self._device_status == 0:
+                    self._hvac_action = HVACAction.HEATING
+                else:
+                    self._hvac_action = HVACAction.IDLE
             elif self._hvac_mode == HVACMode.COOL:
-                self._hvac_action = HVACAction.COOLING if self._temperature > self._target_temperature else HVACAction.IDLE
+                if self._device_status == 0:
+                    self._hvac_action = HVACAction.COOLING
+                else:
+                    self._hvac_action = HVACAction.IDLE
             else:
                 self._hvac_action = HVACAction.FAN
             

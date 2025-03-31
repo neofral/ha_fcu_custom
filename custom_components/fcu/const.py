@@ -5,3 +5,7 @@ from homeassistant.const import Platform
 DOMAIN = "fcu"
 TOKEN_UPDATE_INTERVAL = 180  # Seconds (3 minutes)
 PLATFORMS = [Platform.CLIMATE, Platform.SENSOR]
+
+# Add sensor constants
+DEVICE_STATUS_SENSOR = "device_status"
+ERROR_INDEX_SENSOR = "error_index"
