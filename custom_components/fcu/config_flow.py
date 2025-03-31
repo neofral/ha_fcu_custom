@@ -68,18 +68,28 @@ class FCUOptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        super().__init__(config_entry)
+        self.config_entry = config_entry
+        self.options = dict(config_entry.options)
 
     async def async_step_init(self, user_input=None):
         """Manage the options."""
-        return await self.async_step_user()
-
-    async def async_step_user(self, user_input=None):
-        """Handle a flow initialized by the user."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        options_schema = vol.Schema(
+            {
+                vol.Optional(
+                    "target_temp_high",
+                    default=self.config_entry.options.get("target_temp_high", 0.3)
+                ): vol.Coerce(float),
+                vol.Optional(
+                    "target_temp_low",
+                    default=self.config_entry.options.get("target_temp_low", 0.3)
+                ): vol.Coerce(float),
+            }
+        )
+
         return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema({})
+            step_id="init",
+            data_schema=options_schema
         )

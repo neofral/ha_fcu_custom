@@ -4,7 +4,7 @@
     "step": {
         "user": {
         "title": "Set up your Fan Coil Unit",
-        "description": "Enter the name and IP address of your fan coil unit.",
+        "description": "Enter the name, IP address, username and password of new fan coil unit.",
         "data": {
             "name": "Device Name",
             "ip_address": "IP Address"
