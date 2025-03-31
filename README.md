@@ -1,5 +1,5 @@
 # ha_fcu_custom
-Eko Energis controller integration for Home Assistant
+Eko Energis + Cotronika controller integration for Home Assistant
 
 # FCU Climate Integration
 
@@ -9,6 +9,7 @@ This is a custom integration for FCU devices in Home Assistant.
 - Support for HVAC modes: Off, Cool, Heat, Fan Only.
 - Fan modes: Low, Medium, High, Auto.
 - Current and target temperatures.
+- Sensor for Room and Water Temperatures
 
 ## Installation
 1. Clone this repository into your `custom_components` folder.

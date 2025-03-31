@@ -28,8 +28,10 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up the fan coil unit climate entity."""
     name = config_entry.data["name"]
     ip_address = config_entry.data["ip_address"]
+    username = config_entry.data.get("username", "admin")
+    password = config_entry.data.get("password", "d033e22ae348aeb5660fc2140aec35850c4da997")
 
-    climate_entity = FCUClimate(name, ip_address)
+    climate_entity = FCUClimate(name, ip_address, username, password)
     async_add_entities([climate_entity], True)
     
     # Store climate entity in hass.data for sensors to access
@@ -39,10 +41,13 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 class FCUClimate(ClimateEntity):
     """Representation of a fan coil unit as a climate entity."""
 
-    def __init__(self, name, ip_address):
-        self._attr_unique_id = name  # Changed from f"{ip_address}_{name}"
+    def __init__(self, name, ip_address, username, password):
+        """Initialize the climate entity."""
+        self._attr_unique_id = name
         self._name = name
         self._ip_address = ip_address
+        self._username = username
+        self._password = password
         self._temperature = None
         self._water_temp = None
         self._temp2 = None
@@ -80,7 +85,7 @@ class FCUClimate(ClimateEntity):
     async def _fetch_token(self):
         """Fetch a new token from the device."""
         login_url = f"http://{self._ip_address}/login.htm"
-        payload = {"username": "admin", "password": "d033e22ae348aeb5660fc2140aec35850c4da997"}
+        payload = {"username": self._username, "password": self._password}
         headers = {
             "x-requested-with": "myApp",
             "Content-Type": "application/x-www-form-urlencoded",
