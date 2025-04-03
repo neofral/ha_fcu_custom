@@ -5,6 +5,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import UnitOfTemperature
+from homeassistant.components.climate import HVACMode  # Add this import
 from .const import DOMAIN
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
