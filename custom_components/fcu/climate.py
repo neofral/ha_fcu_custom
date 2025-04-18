@@ -11,7 +11,10 @@ from homeassistant.const import (
 import aiohttp
 import asyncio  # Add this import
 import logging
-from .const import DOMAIN
+from datetime import timedelta
+from homeassistant.core import CALLBACK_TYPE
+from homeassistant.helpers.event import async_track_time_interval
+from .const import DOMAIN, SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,6 +43,20 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     # Store climate entity in hass.data for sensors to access
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][name] = climate_entity
+
+    # Set up periodic updates
+    async def async_update_data(_now=None):
+        """Update device state."""
+        await climate_entity.async_update()
+
+    unsubscribe = async_track_time_interval(
+        hass, async_update_data, timedelta(seconds=SCAN_INTERVAL)
+    )
+
+    # Store unsubscribe function
+    hass.data[DOMAIN][f"{name}_unsub"] = unsubscribe
+
+    return True
 
 class FCUClimate(ClimateEntity):
     """Representation of a fan coil unit as a climate entity."""
@@ -81,6 +98,11 @@ class FCUClimate(ClimateEntity):
         self._target_temp_low = 0.3   # Heating hysteresis
         self._device_status = None
         self._error_index = None
+
+    async def async_added_to_hass(self) -> None:
+        """Run when entity about to be added to hass."""
+        # Initial update
+        await self.async_update()
 
     async def async_update(self):
         """Fetch new state data for the entity."""
