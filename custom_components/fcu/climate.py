@@ -24,6 +24,9 @@ COMMON_HEADERS = {
     "X-Requested-With": "myApp",
 }
 
+RETRY_ATTEMPTS = 3
+RETRY_DELAY = 2  # seconds
+
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up the fan coil unit climate entity."""
     name = config_entry.data["name"]
@@ -424,8 +427,10 @@ class FCUClimate(ClimateEntity):
     async def _set_control(self, control_data):
         """Send control command to the device."""
         if not self._token:
-            _LOGGER.warning("No valid token available for %s, cannot set control", self._name)
-            return
+            await self._fetch_token()  # Try to get a new token if none exists
+            if not self._token:
+                _LOGGER.error("No valid token available for %s, cannot set control", self._name)
+                return
 
         control_url = f"http://{self._ip_address}/wifi/setmode"
         headers = {
@@ -498,34 +503,45 @@ class FCUClimate(ClimateEntity):
         
         _LOGGER.debug("Sending control payload: %s for mode: %s", payload, current_mode)
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    control_url,
-                    headers=headers,
-                    data=payload,
-                    timeout=aiohttp.ClientTimeout(total=TIMEOUT),
-                    allow_redirects=False,
-                ) as response:
-                    response_text = await response.text()
-                    _LOGGER.debug("Control response [%d]: %s", response.status, response_text)
-                    
-                    if response.status != 200:
-                        raise aiohttp.ClientError(f"Invalid response status: {response.status}")
+        for attempt in range(RETRY_ATTEMPTS):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        control_url,
+                        headers=headers,
+                        data=payload,
+                        timeout=aiohttp.ClientTimeout(total=TIMEOUT),
+                        allow_redirects=False,
+                        ssl=False  # Disable SSL verification
+                    ) as response:
+                        response_text = await response.text()
+                        _LOGGER.debug("Control response [%d]: %s", response.status, response_text)
+                        
+                        if response.status == 401:  # Unauthorized
+                            await self._fetch_token()  # Try to get a new token
+                            continue
+                        
+                        if response.status != 200:
+                            raise aiohttp.ClientError(f"Invalid response status: {response.status}")
 
-            # Update attributes after successful control command
-            self._attributes.update({
-                "fan_mode_cooling": self._fan_mode_cooling,
-                "fan_mode_heating": self._fan_mode_heating,
-                "fan_mode_fan": self._fan_mode_fan
-            })
-            self.async_write_ha_state()
-            
-            # Force an immediate state update after control command
-            await self._fetch_device_state()
-            
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-            if hasattr(self, '_fan_mode_updating'):
-                delattr(self, '_fan_mode_updating')
-            _LOGGER.error("Failed to send control command to %s: %s", self._name, str(err))
-            raise
+                        # Success - update states and return
+                        self._update_states_after_control(control_data)
+                        return
+
+            except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+                _LOGGER.warning("Attempt %d failed for %s: %s", attempt + 1, self._name, str(err))
+                if attempt < RETRY_ATTEMPTS - 1:
+                    await asyncio.sleep(RETRY_DELAY)
+                else:
+                    _LOGGER.error("Failed to send control command after %d attempts", RETRY_ATTEMPTS)
+                    raise
+
+    def _update_states_after_control(self, control_data):
+        """Update internal states after successful control command."""
+        # Update attributes
+        self._attributes.update({
+            "fan_mode_cooling": self._fan_mode_cooling,
+            "fan_mode_heating": self._fan_mode_heating,
+            "fan_mode_fan": self._fan_mode_fan
+        })
+        self.async_write_ha_state()
