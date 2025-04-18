@@ -9,5 +9,3 @@ PLATFORMS = [Platform.CLIMATE, Platform.SENSOR]
 # Add sensor constants
 DEVICE_STATUS_SENSOR = "device_status"
 ERROR_INDEX_SENSOR = "error_index"
-
-SCAN_INTERVAL = 30  # seconds between updates
