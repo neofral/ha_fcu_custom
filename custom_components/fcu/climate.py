@@ -9,12 +9,12 @@ from homeassistant.const import (
     ATTR_TEMPERATURE,
 )
 import aiohttp
-import asyncio  # Add this import
+import asyncio
 import logging
 from datetime import timedelta
 from homeassistant.core import CALLBACK_TYPE
 from homeassistant.helpers.event import async_track_time_interval
-from .const import DOMAIN, SCAN_INTERVAL
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -539,7 +539,6 @@ class FCUClimate(ClimateEntity):
 
     def _update_states_after_control(self, control_data):
         """Update internal states after successful control command."""
-        # Update attributes
         self._attributes.update({
             "fan_mode_cooling": self._fan_mode_cooling,
             "fan_mode_heating": self._fan_mode_heating,
