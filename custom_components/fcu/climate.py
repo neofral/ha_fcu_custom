@@ -44,6 +44,18 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][name] = climate_entity
 
+    # Set up periodic updates
+    async def async_update(_now=None):
+        """Update device state."""
+        await climate_entity.async_update()
+
+    remove_update_interval = async_track_time_interval(
+        hass, async_update, SCAN_INTERVAL
+    )
+
+    # Store cleanup function
+    hass.data[DOMAIN][f"{name}_cleanup"] = remove_update_interval
+
 class FCUClimate(ClimateEntity):
     """Representation of a fan coil unit as a climate entity."""
 
@@ -174,9 +186,6 @@ class FCUClimate(ClimateEntity):
             self._water_temp = round(float(data.get("wt", 0)), 1)  # Water temperature
             self._device_status = round(float(data.get("device_status", 0)), 1)  # Device status
             self._error_index = round(float(data.get("error_index", 0)), 1)  # Error index
-#            self._temp2 = round(float(data.get("t3", 0)), 1)  # Room temperature 2
-#            self._device_status = str(data.get("device_status", ""))  # Device status
-#            self._error_index = str(data.get("error_index", ""))  # Error index
             
             # Store temperatures in attributes with same precision
             self._attributes.update({
@@ -305,7 +314,7 @@ class FCUClimate(ClimateEntity):
             "name": self._name,
             "manufacturer": "Eko Energis + Cotronika",
             "model": "FCU Controller v.0.0.3RD",
-            "configuration_url": f"http://{self._ip_address}",
+            "configuration_url": f"http://{self._ip_address}"
         }
 
     @property
@@ -522,5 +531,30 @@ class FCUClimate(ClimateEntity):
                         _LOGGER.debug("Control response [%d]: %s", response.status, response_text)
                         
                         if response.status == 401:  # Unauthorized
-                                                  if response.status != 200:                              raise aiohttp.ClientError(f"Invalid response status: {response.status}")
-if                        # Success - update states and return                          self._update_states_after_control(control_data)                          return# se            except (aiohttp.ClientError, asyncio.TimeoutError) as err:re                _LOGGER.warning("Attempt %d failed for %s: %s", attempt + 1, self._name, str(err))oh                if attempt < RETRY_ATTEMPTS - 1:tt                    await asyncio.sleep(RETRY_DELAY)wa                else:pt                    _LOGGER.error("Failed to send control command after %d attempts", RETRY_ATTEMPTS)t                     raise  GE    def _update_states_after_control(self, control_data):e        """Update internal states after successful control command."""_a        # Update attributesft        self._attributes.update({al            "fan_mode_cooling": self._fan_mode_cooling,te            "fan_mode_heating": self._fan_mode_heating,.u            "fan_mode_fan": self._fan_mode_fanol        })at        self.async_write_ha_state()
+                            await self._fetch_token()  # Try to get a new token
+                            continue
+                        
+                        if response.status != 200:
+                            raise aiohttp.ClientError(f"Invalid response status: {response.status}")
+
+                        # Success - update states and return
+                        self._update_states_after_control(control_data)
+                        return
+
+            except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+                _LOGGER.warning("Attempt %d failed for %s: %s", attempt + 1, self._name, str(err))
+                if attempt < RETRY_ATTEMPTS - 1:
+                    await asyncio.sleep(RETRY_DELAY)
+                else:
+                    _LOGGER.error("Failed to send control command after %d attempts", RETRY_ATTEMPTS)
+                    raise
+
+    def _update_states_after_control(self, control_data):
+        """Update internal states after successful control command."""
+        # Update attributes
+        self._attributes.update({
+            "fan_mode_cooling": self._fan_mode_cooling,
+            "fan_mode_heating": self._fan_mode_heating,
+            "fan_mode_fan": self._fan_mode_fan
+        })
+        self.async_write_ha_state()
