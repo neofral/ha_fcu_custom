@@ -9,7 +9,7 @@ from homeassistant.const import (
     ATTR_TEMPERATURE,
 )
 import aiohttp
-import asyncio  # Add this import
+import asyncio
 import logging
 from datetime import timedelta
 from homeassistant.core import CALLBACK_TYPE
@@ -34,10 +34,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up the fan coil unit climate entity."""
     name = config_entry.data["name"]
     ip_address = config_entry.data["ip_address"]
-    username = config_entry.data.get("username", "admin")
-    password = config_entry.data.get("password", "d033e22ae348aeb5660fc2140aec35850c4da997")
 
-    climate_entity = FCUClimate(name, ip_address, username, password)
+    climate_entity = FCUClimate(name, ip_address)
     async_add_entities([climate_entity], True)
     
     # Store climate entity in hass.data for sensors to access
@@ -59,13 +57,11 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 class FCUClimate(ClimateEntity):
     """Representation of a fan coil unit as a climate entity."""
 
-    def __init__(self, name, ip_address, username, password):
+    def __init__(self, name, ip_address):
         """Initialize the climate entity."""
         self._attr_unique_id = name
         self._name = name
         self._ip_address = ip_address
-        self._username = username
-        self._password = password
         self._temperature = None
         self._water_temp = None
         self._temp2 = None
@@ -73,8 +69,7 @@ class FCUClimate(ClimateEntity):
         self._hvac_mode = HVACMode.OFF
         self._hvac_action = HVACAction.IDLE
         self._fan_mode = "auto"
-        self._fan_modes = FAN_MODES  # Define supported fan modes
-        self._token = None
+        self._fan_modes = FAN_MODES
         self._attributes = {}
         self._attr_temperature_unit = UnitOfTemperature.CELSIUS
         self._attr_hvac_modes = HVAC_MODES
@@ -99,58 +94,14 @@ class FCUClimate(ClimateEntity):
 
     async def async_update(self):
         """Fetch new state data for the entity."""
-        await self._fetch_token()
         await self._fetch_device_state()
-
-    async def _fetch_token(self):
-        """Fetch a new token from the device."""
-        login_url = f"http://{self._ip_address}/login.htm"
-        payload = {"username": self._username, "password": self._password}
-        headers = {
-            "x-requested-with": "myApp",
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    login_url,
-                    data=payload,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=TIMEOUT),
-                    allow_redirects=False,
-                ) as response:
-                    if response.status != 200:
-                        raise aiohttp.ClientError(f"Invalid response status: {response.status}")
-                    
-                    content_type = response.headers.get("content-type", "").lower()
-                    if "text/plain" not in content_type:
-                        raise aiohttp.ClientError(f"Invalid content type: {content_type}")
-
-                    token = (await response.text()).strip()
-                    if not token or '\n' in token or '\r' in token:
-                        raise aiohttp.ClientError("Invalid token format")
-                    
-                    self._token = token
-                    _LOGGER.debug("Token fetched successfully for %s", self._name)
-
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-            _LOGGER.error("Failed to fetch token for %s: %s", self._name, str(err))
-            self._token = None
 
     async def _fetch_device_state(self):
         """Fetch the current state of the device."""
-        if not self._token:
-            _LOGGER.warning("No valid token available for %s, skipping state fetch", self._name)
-            return
-
         status_url = f"http://{self._ip_address}/wifi/status"
         headers = {
-            "X-Requested-With": "myApp",
-            "Authorization": f"Bearer {self._token.strip()}",
             "Content-Type": "application/x-www-form-urlencoded",
             "Accept": CONTENT_TYPE_JSON,
-            **COMMON_HEADERS
         }
 
         try:
@@ -164,10 +115,6 @@ class FCUClimate(ClimateEntity):
                     if response.status != 200:
                         raise aiohttp.ClientError(f"Invalid response status: {response.status}")
                     
-                    content_type = response.headers.get("content-type", "").lower()
-                    if CONTENT_TYPE_JSON not in content_type:
-                        raise aiohttp.ClientError(f"Invalid content type: {content_type}")
-
                     data = await response.json()
                     if not isinstance(data, dict):
                         raise aiohttp.ClientError("Invalid response format")
@@ -439,17 +386,9 @@ class FCUClimate(ClimateEntity):
 
     async def _set_control(self, control_data):
         """Send control command to the device."""
-        if not self._token:
-            await self._fetch_token()  # Try to get a new token if none exists
-            if not self._token:
-                _LOGGER.error("No valid token available for %s, cannot set control", self._name)
-                return
-
         control_url = f"http://{self._ip_address}/wifi/setmode"
         headers = {
-            "Authorization": f"Bearer {self._token.strip()}",
             "Content-Type": "application/x-www-form-urlencoded",
-            "X-Requested-With": "myApp"
         }
 
         # Get current mode and build basic payload
@@ -529,13 +468,6 @@ class FCUClimate(ClimateEntity):
                     ) as response:
                         response_text = await response.text()
                         _LOGGER.debug("Control response [%d]: %s", response.status, response_text)
-                        
-                        if response.status in (401, 403):  # Unauthorized or Forbidden
-                            _LOGGER.debug("Token expired or invalid, refreshing...")
-                            await self._fetch_token()  # Try to get a new token
-                            if self._token:  # Update headers with new token
-                                headers["Authorization"] = f"Bearer {self._token.strip()}"
-                            continue
                         
                         if response.status != 200:
                             raise aiohttp.ClientError(f"Invalid response status: {response.status}")
