@@ -525,13 +525,16 @@ class FCUClimate(ClimateEntity):
                         data=payload,
                         timeout=aiohttp.ClientTimeout(total=TIMEOUT),
                         allow_redirects=False,
-                        ssl=False  # Disable SSL verification
+                        ssl=False
                     ) as response:
                         response_text = await response.text()
                         _LOGGER.debug("Control response [%d]: %s", response.status, response_text)
                         
-                        if response.status == 401:  # Unauthorized
+                        if response.status in (401, 403):  # Unauthorized or Forbidden
+                            _LOGGER.debug("Token expired or invalid, refreshing...")
                             await self._fetch_token()  # Try to get a new token
+                            if self._token:  # Update headers with new token
+                                headers["Authorization"] = f"Bearer {self._token.strip()}"
                             continue
                         
                         if response.status != 200:
