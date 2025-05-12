@@ -15,8 +15,9 @@ _LOGGER = logging.getLogger(__name__)
 DATA_SCHEMA = vol.Schema({
     vol.Required(CONF_NAME): str,
     vol.Required(CONF_IP_ADDRESS): str,
-    vol.Required(CONF_USERNAME, default="admin"): str,
-    vol.Required(CONF_PASSWORD): str,
+    vol.Required("use_auth", default=True): bool,
+    vol.Optional(CONF_USERNAME, default="admin"): str,
+    vol.Optional(CONF_PASSWORD): str,
 })
 
 def hash_password(password: str) -> str:
@@ -32,28 +33,46 @@ class FCUConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            # Use name as unique ID
             await self.async_set_unique_id(user_input[CONF_NAME])
             self._abort_if_unique_id_configured()
 
             try:
-                # Basic validation of IP address format
                 if ":" in user_input[CONF_IP_ADDRESS]:
                     errors["base"] = "invalid_ip"
                 else:
-                    # Hash the password before saving
-                    user_input[CONF_PASSWORD] = hash_password(user_input[CONF_PASSWORD])
+                    # Only hash password if auth is enabled
+                    if user_input.get("use_auth", True):
+                        if CONF_PASSWORD in user_input:
+                            user_input[CONF_PASSWORD] = hash_password(user_input[CONF_PASSWORD])
+                    else:
+                        # Remove credentials if auth is disabled
+                        user_input.pop(CONF_USERNAME, None)
+                        user_input.pop(CONF_PASSWORD, None)
+                    
                     return self.async_create_entry(
                         title=user_input[CONF_NAME],
                         data=user_input
                     )
-            except Exception:  # pylint: disable=broad-except
+            except Exception:
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
+        # Adjust schema based on auth selection
+        schema = vol.Schema({
+            vol.Required(CONF_NAME): str,
+            vol.Required(CONF_IP_ADDRESS): str,
+            vol.Required("use_auth", default=True): bool,
+        })
+
+        if user_input is None or user_input.get("use_auth", True):
+            schema = schema.extend({
+                vol.Required(CONF_USERNAME, default="admin"): str,
+                vol.Required(CONF_PASSWORD): str,
+            })
+
         return self.async_show_form(
             step_id="user",
-            data_schema=DATA_SCHEMA,
+            data_schema=schema,
             errors=errors
         )
 
@@ -74,22 +93,40 @@ class FCUOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         if user_input is not None:
+            # Handle auth mode changes
+            if "use_auth" in user_input:
+                update_data = {}
+                if not user_input["use_auth"]:
+                    # Remove auth credentials when disabling auth
+                    update_data = {
+                        CONF_USERNAME: None,
+                        CONF_PASSWORD: None,
+                    }
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry,
+                    data={**self.config_entry.data, **update_data}
+                )
             return self.async_create_entry(title="", data=user_input)
 
-        options_schema = vol.Schema(
-            {
-                vol.Optional(
-                    "target_temp_high",
-                    default=self.config_entry.options.get("target_temp_high", 0.3)
-                ): vol.Coerce(float),
-                vol.Optional(
-                    "target_temp_low",
-                    default=self.config_entry.options.get("target_temp_low", 0.3)
-                ): vol.Coerce(float),
-            }
-        )
+        options_schema = vol.Schema({
+            vol.Required(
+                "use_auth",
+                default=self.config_entry.options.get(
+                    "use_auth", 
+                    self.config_entry.data.get("use_auth", True)
+                )
+            ): bool,
+            vol.Optional(
+                "target_temp_high",
+                default=self.config_entry.options.get("target_temp_high", 0.3)
+            ): vol.Coerce(float),
+            vol.Optional(
+                "target_temp_low",
+                default=self.config_entry.options.get("target_temp_low", 0.3)
+            ): vol.Coerce(float),
+        })
 
         return self.async_show_form(
-            step_id="init",
+            step_id="init", 
             data_schema=options_schema
         )

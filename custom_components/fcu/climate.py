@@ -34,10 +34,13 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up the fan coil unit climate entity."""
     name = config_entry.data["name"]
     ip_address = config_entry.data["ip_address"]
-    username = config_entry.data.get("username", "admin")
-    password = config_entry.data.get("password", "d033e22ae348aeb5660fc2140aec35850c4da997")
+    use_auth = config_entry.data.get("use_auth", True)
+    
+    # Only get credentials if auth is enabled
+    username = config_entry.data.get("username") if use_auth else None
+    password = config_entry.data.get("password") if use_auth else None
 
-    climate_entity = FCUClimate(name, ip_address, username, password)
+    climate_entity = FCUClimate(name, ip_address, use_auth, username, password)
     async_add_entities([climate_entity], True)
     
     # Store climate entity in hass.data for sensors to access
@@ -59,13 +62,16 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 class FCUClimate(ClimateEntity):
     """Representation of a fan coil unit as a climate entity."""
 
-    def __init__(self, name, ip_address, username, password):
+    def __init__(self, name, ip_address, use_auth=True, username=None, password=None):
         """Initialize the climate entity."""
         self._attr_unique_id = name
         self._name = name
         self._ip_address = ip_address
-        self._username = username
-        self._password = password
+        self._use_auth = use_auth
+        # Only store credentials if auth is enabled
+        self._username = username if use_auth else None
+        self._password = password if use_auth else None
+        self._token = None
         self._temperature = None
         self._water_temp = None
         self._temp2 = None
@@ -74,7 +80,6 @@ class FCUClimate(ClimateEntity):
         self._hvac_action = HVACAction.IDLE
         self._fan_mode = "auto"
         self._fan_modes = FAN_MODES  # Define supported fan modes
-        self._token = None
         self._attributes = {}
         self._attr_temperature_unit = UnitOfTemperature.CELSIUS
         self._attr_hvac_modes = HVAC_MODES
@@ -104,6 +109,11 @@ class FCUClimate(ClimateEntity):
 
     async def _fetch_token(self):
         """Fetch a new token from the device."""
+        if not self._use_auth:
+            _LOGGER.debug("Skipping token fetch for %s (auth disabled)", self._name)
+            self._token = "no_auth_token"
+            return
+
         login_url = f"http://{self._ip_address}/login.htm"
         payload = {"username": self._username, "password": self._password}
         headers = {
@@ -140,18 +150,20 @@ class FCUClimate(ClimateEntity):
 
     async def _fetch_device_state(self):
         """Fetch the current state of the device."""
-        if not self._token:
+        if self._use_auth and not self._token:
             _LOGGER.warning("No valid token available for %s, skipping state fetch", self._name)
             return
 
-        status_url = f"http://{self._ip_address}/wifi/status"
-        headers = {
-            "X-Requested-With": "myApp",
-            "Authorization": f"Bearer {self._token.strip()}",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": CONTENT_TYPE_JSON,
-            **COMMON_HEADERS
-        }
+        # Use different endpoint based on auth mode
+        status_url = f"http://{self._ip_address}/wifi/{'status' if self._use_auth else 'shortstatus'}"
+        headers = COMMON_HEADERS.copy()
+        
+        if self._use_auth:
+            headers.update({
+                "Authorization": f"Bearer {self._token.strip()}",
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": CONTENT_TYPE_JSON,
+            })
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -439,18 +451,21 @@ class FCUClimate(ClimateEntity):
 
     async def _set_control(self, control_data):
         """Send control command to the device."""
-        if not self._token:
-            await self._fetch_token()  # Try to get a new token if none exists
+        if self._use_auth and not self._token:
+            await self._fetch_token()
             if not self._token:
                 _LOGGER.error("No valid token available for %s, cannot set control", self._name)
                 return
 
-        control_url = f"http://{self._ip_address}/wifi/setmode"
-        headers = {
-            "Authorization": f"Bearer {self._token.strip()}",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "X-Requested-With": "myApp"
-        }
+        # Use different endpoint based on auth mode
+        control_url = f"http://{self._ip_address}/wifi/{'setmode' if self._use_auth else 'setmodenoauth'}"
+        headers = COMMON_HEADERS.copy()
+        
+        if self._use_auth:
+            headers.update({
+                "Authorization": f"Bearer {self._token.strip()}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            })
 
         # Get current mode and build basic payload
         current_mode = control_data.get("hvac_mode", self._hvac_mode)
@@ -525,13 +540,13 @@ class FCUClimate(ClimateEntity):
                         data=payload,
                         timeout=aiohttp.ClientTimeout(total=TIMEOUT),
                         allow_redirects=False,
-                        ssl=False  # Disable SSL verification
+                        ssl=False
                     ) as response:
                         response_text = await response.text()
                         _LOGGER.debug("Control response [%d]: %s", response.status, response_text)
                         
-                        if response.status == 401:  # Unauthorized
-                            await self._fetch_token()  # Try to get a new token
+                        if self._use_auth and response.status == 401:  # Unauthorized
+                            await self._fetch_token()
                             continue
                         
                         if response.status != 200:
