@@ -2,9 +2,10 @@
 import voluptuous as vol
 import aiohttp
 import logging
+import hashlib
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_NAME, CONF_IP_ADDRESS
+from homeassistant.const import CONF_NAME, CONF_IP_ADDRESS, CONF_USERNAME, CONF_PASSWORD
 from homeassistant.core import callback
 
 from .const import DOMAIN
@@ -14,7 +15,13 @@ _LOGGER = logging.getLogger(__name__)
 DATA_SCHEMA = vol.Schema({
     vol.Required(CONF_NAME): str,
     vol.Required(CONF_IP_ADDRESS): str,
+    vol.Required(CONF_USERNAME, default="admin"): str,
+    vol.Required(CONF_PASSWORD): str,
 })
+
+def hash_password(password: str) -> str:
+    """Hash password using SHA1."""
+    return hashlib.sha1(password.encode()).hexdigest()
 
 class FCUConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for FCU integration."""
@@ -25,13 +32,17 @@ class FCUConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
+            # Use name as unique ID
             await self.async_set_unique_id(user_input[CONF_NAME])
             self._abort_if_unique_id_configured()
 
             try:
+                # Basic validation of IP address format
                 if ":" in user_input[CONF_IP_ADDRESS]:
                     errors["base"] = "invalid_ip"
                 else:
+                    # Hash the password before saving
+                    user_input[CONF_PASSWORD] = hash_password(user_input[CONF_PASSWORD])
                     return self.async_create_entry(
                         title=user_input[CONF_NAME],
                         data=user_input
