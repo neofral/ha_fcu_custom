@@ -104,6 +104,14 @@ class FCUClimate(ClimateEntity):
 
     async def async_update(self):
         """Fetch new state data for the entity."""
+        # Re-read use_auth from config entry options
+        entry = self.hass.config_entries.async_get_entry(self.entity_id)
+        if entry and entry.data.get("use_auth") != self._use_auth:
+            self._use_auth = entry.data["use_auth"]
+            self._username = entry.data.get("username") if self._use_auth else None
+            self._password = entry.data.get("password") if self._use_auth else None
+            self._token = None
+        
         await self._fetch_token()
         await self._fetch_device_state()
 

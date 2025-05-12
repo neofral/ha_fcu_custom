@@ -93,40 +93,33 @@ class FCUOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         if user_input is not None:
-            # Handle auth mode changes
-            if "use_auth" in user_input:
-                update_data = {}
+            # Update the config entry data when auth mode changes
+            if user_input.get("use_auth") != self.config_entry.data.get("use_auth"):
+                new_data = dict(self.config_entry.data)
+                new_data["use_auth"] = user_input["use_auth"]
                 if not user_input["use_auth"]:
-                    # Remove auth credentials when disabling auth
-                    update_data = {
-                        CONF_USERNAME: None,
-                        CONF_PASSWORD: None,
-                    }
+                    new_data.pop("username", None)
+                    new_data.pop("password", None)
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
-                    data={**self.config_entry.data, **update_data}
+                    data=new_data
                 )
             return self.async_create_entry(title="", data=user_input)
 
-        options_schema = vol.Schema({
-            vol.Required(
-                "use_auth",
-                default=self.config_entry.options.get(
-                    "use_auth", 
-                    self.config_entry.data.get("use_auth", True)
-                )
-            ): bool,
-            vol.Optional(
-                "target_temp_high",
-                default=self.config_entry.options.get("target_temp_high", 0.3)
-            ): vol.Coerce(float),
-            vol.Optional(
-                "target_temp_low",
-                default=self.config_entry.options.get("target_temp_low", 0.3)
-            ): vol.Coerce(float),
-        })
-
         return self.async_show_form(
-            step_id="init", 
-            data_schema=options_schema
+            step_id="init",
+            data_schema=vol.Schema({
+                vol.Required(
+                    "use_auth",
+                    default=self.config_entry.data.get("use_auth", True)
+                ): bool,
+                vol.Optional(
+                    "target_temp_high",
+                    default=self.config_entry.options.get("target_temp_high", 0.3)
+                ): vol.Coerce(float),
+                vol.Optional(
+                    "target_temp_low",
+                    default=self.config_entry.options.get("target_temp_low", 0.3)
+                ): vol.Coerce(float),
+            })
         )
