@@ -94,33 +94,28 @@ class FCUOptionsFlowHandler(config_entries.OptionsFlow):
             try:
                 # Convert and validate values
                 device_vars = {
-                    't1d': "{:.1f}".format(round(float(user_input[CONF_T1D]), 1)),
-                    't2d': "{:.1f}".format(round(float(user_input[CONF_T2D]), 1)),
-                    't3d': "{:.1f}".format(round(float(user_input[CONF_T3D]), 1)),
-                    't4d': "{:.1f}".format(round(float(user_input[CONF_T4D]), 1)),
+                    't1d': "{:.1f}".format(float(user_input[CONF_T1D])),
+                    't2d': "{:.1f}".format(float(user_input[CONF_T2D])),
+                    't3d': "{:.1f}".format(float(user_input[CONF_T3D])),
+                    't4d': "{:.1f}".format(float(user_input[CONF_T4D])),
                     'shutdown_delay': str(int(user_input[CONF_SHUTDOWN_DELAY]))
                 }
                 _LOGGER.debug("Submitting values: %s", device_vars)
                 
                 payload = "&".join(f"{k}={v}" for k, v in device_vars.items())
-                _LOGGER.debug("Sending payload: %s", payload)
-
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post(
-                            f"http://{self._ip_address}/wifi/extraconfig",
-                            data=payload,
-                        ) as response:
-                            response_text = await response.text()
-                            _LOGGER.debug("Response: %s", response_text)
-                            if response.status == 200:
-                                await self._fetch_current_values()  # Refresh values
-                                return self.async_create_entry(title="", data=self.current_values)
-                            errors["base"] = "update_failed"
-                except Exception as ex:
-                    _LOGGER.error("Error updating config: %s", ex)
-                    errors["base"] = "update_failed"
-
+                
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        f"http://{self._ip_address}/wifi/extraconfig",
+                        data=payload,
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    ) as response:
+                        response_text = await response.text()
+                        _LOGGER.debug("Response: %s", response_text)
+                        if response.status == 200:
+                            await self._fetch_current_values()  # Refresh values
+                            return self.async_create_entry(title="", data=self.current_values)
+                        errors["base"] = "update_failed"
             except ValueError as ex:
                 _LOGGER.error("Value error: %s", ex)
                 errors["base"] = "invalid_value"
@@ -131,23 +126,23 @@ class FCUOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=vol.Schema({
                 vol.Required(
                     CONF_T1D, 
-                    default=float(self.current_values.get(CONF_T1D, 0.0))
+                    default=self.current_values.get(CONF_T1D, 0.0)
                 ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=10.0)),
                 vol.Required(
                     CONF_T2D,
-                    default=float(self.current_values.get(CONF_T2D, 0.0))
+                    default=self.current_values.get(CONF_T2D, 0.0)
                 ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=10.0)),
                 vol.Required(
                     CONF_T3D,
-                    default=float(self.current_values.get(CONF_T3D, 0.0))
+                    default=self.current_values.get(CONF_T3D, 0.0)
                 ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=10.0)),
                 vol.Required(
                     CONF_T4D,
-                    default=float(self.current_values.get(CONF_T4D, 0.0))
+                    default=self.current_values.get(CONF_T4D, 0.0)
                 ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=10.0)),
                 vol.Required(
                     CONF_SHUTDOWN_DELAY,
-                    default=int(self.current_values.get(CONF_SHUTDOWN_DELAY, 30000))
+                    default=self.current_values.get(CONF_SHUTDOWN_DELAY, 30000)
                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=60000)),
             }),
             errors=errors,
