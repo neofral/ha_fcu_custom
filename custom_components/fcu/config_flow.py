@@ -86,23 +86,28 @@ class FCUOptionsFlowHandler(config_entries.OptionsFlow):
         """Manage the options."""
         errors = {}
 
-        # Fetch current values first time
         if not self.current_values:
             await self._fetch_current_values()
 
         if user_input is not None:
-            ip_address = self._ip_address  # Use stored IP address
-            # Format payload like setmodenoauth
-            payload = "&".join([
-                f"{k}={v}" for k, v in user_input.items()
-            ])
+            ip_address = self._ip_address
+            # Map config names to device variable names and format values
+            device_vars = {
+                't1d': format(float(user_input[CONF_T1D]), '.1f'),
+                't2d': format(float(user_input[CONF_T2D]), '.1f'),
+                't3d': format(float(user_input[CONF_T3D]), '.1f'),
+                't4d': format(float(user_input[CONF_T4D]), '.1f'),
+                'shutdown_delay': str(int(user_input[CONF_SHUTDOWN_DELAY]))
+            }
+            
+            payload = "&".join(f"{k}={v}" for k, v in device_vars.items())
             _LOGGER.debug("Sending payload: %s", payload)
 
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.post(
                         f"http://{ip_address}/wifi/extraconfig",
-                        data=payload,  # Will be sent as form-urlencoded automatically
+                        data=payload,
                     ) as response:
                         response_text = await response.text()
                         _LOGGER.debug("Response: %s", response_text)
