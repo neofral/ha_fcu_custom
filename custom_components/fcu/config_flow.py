@@ -56,27 +56,27 @@ class FCUOptionsFlowHandler(config_entries.OptionsFlow):
         errors = {}
 
         if user_input is not None:
-            # Send updates to device
             ip_address = self.config_entry.data[CONF_IP_ADDRESS]
-            success = True
+            
+            # Format payload as key=value pairs joined by &
+            payload = "&".join(f"{k}={v}" for k, v in user_input.items())
+            url = f"http://{ip_address}/wifi/extraconfig"
 
-            async with aiohttp.ClientSession() as session:
-                for key, value in user_input.items():
-                    url = f"http://{ip_address}/wifi/extraconfig"
-                    payload = {key: str(value)}
-                    
-                    try:
-                        async with session.post(url, data=payload) as response:
-                            if response.status != 200:
-                                success = False
-                                _LOGGER.error("Failed to update %s: %s", key, await response.text())
-                    except Exception as ex:
-                        success = False
-                        _LOGGER.error("Error updating %s: %s", key, str(ex))
-
-            if success:
-                return self.async_create_entry(title="", data=user_input)
-            errors["base"] = "update_failed"
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        url,
+                        data=payload,  # Will be sent as form-urlencoded
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    ) as response:
+                        if response.status != 200:
+                            _LOGGER.error("Failed to update config: %s", await response.text())
+                            errors["base"] = "update_failed"
+                        else:
+                            return self.async_create_entry(title="", data=user_input)
+            except Exception as ex:
+                _LOGGER.error("Error updating config: %s", str(ex))
+                errors["base"] = "update_failed"
 
         return self.async_show_form(
             step_id="init",
