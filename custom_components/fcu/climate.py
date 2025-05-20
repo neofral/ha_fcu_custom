@@ -222,18 +222,19 @@ class FCUClimate(ClimateEntity, RestoreEntity):
             return
 
         status_url = f"http://{self._ip_address}/wifi/{'status' if self._use_auth else 'shortstatus'}"
-        headers = COMMON_HEADERS.copy()
+        headers = None
         
         if self._use_auth:
-            headers.update({
+            headers = {
+                **COMMON_HEADERS,
                 "Authorization": f"Bearer {self._token.strip()}",
                 "Content-Type": "application/x-www-form-urlencoded",
                 "Accept": CONTENT_TYPE_JSON,
-            })
+            }
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(  # Always use POST
+                async with session.post(
                     status_url,
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=TIMEOUT),
@@ -563,14 +564,8 @@ class FCUClimate(ClimateEntity, RestoreEntity):
 
         # Different request format for auth/no-auth but both use POST
         control_url = f"http://{self._ip_address}/wifi/{'setmode' if self._use_auth else 'setmodenoauth'}"
-        headers = COMMON_HEADERS.copy()
+        headers = None
         
-        if self._use_auth:
-            headers.update({
-                "Authorization": f"Bearer {self._token.strip()}",
-                "Content-Type": "application/x-www-form-urlencoded",
-            })
-
         # Same parameter format for both auth and no-auth
         device_data = {
             "required_mode": mode,
@@ -578,23 +573,30 @@ class FCUClimate(ClimateEntity, RestoreEntity):
             "required_speed": fan_speed,
         }
 
-        if self._use_auth and "fan_mode" in control_data:
-            if current_mode == HVACMode.COOL:
-                device_data["fan_state_current_cooling"] = fan_speed
-            elif current_mode == HVACMode.HEAT:
-                device_data["fan_state_current_heating"] = fan_speed
-            elif current_mode == HVACMode.FAN_ONLY:
-                device_data["fan_state_current_fan"] = fan_speed
+        if self._use_auth:
+            headers = {
+                **COMMON_HEADERS,
+                "Authorization": f"Bearer {self._token.strip()}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            }
+            if "fan_mode" in control_data:
+                if current_mode == HVACMode.COOL:
+                    device_data["fan_state_current_cooling"] = fan_speed
+                elif current_mode == HVACMode.HEAT:
+                    device_data["fan_state_current_heating"] = fan_speed
+                elif current_mode == HVACMode.FAN_ONLY:
+                    device_data["fan_state_current_fan"] = fan_speed
 
         # Build payload string with required format
         payload = "&".join(f"{k}={v}" for k, v in device_data.items())
         
-        _LOGGER.debug("Sending control - URL: %s, Payload: %s", control_url, payload)
+        _LOGGER.debug("Sending control - URL: %s, Headers: %s, Payload: %s", 
+                     control_url, headers, payload)
 
         for attempt in range(RETRY_ATTEMPTS):
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(  # Always use POST
+                    async with session.post(
                         control_url,
                         headers=headers,
                         data=payload,
