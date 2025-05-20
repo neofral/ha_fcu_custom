@@ -52,20 +52,35 @@ class FCUTemperatureSensor(SensorEntity):
     def __init__(self, name, unit, device_class, state_class, measurement_fn, climate_entity):
         """Initialize the sensor."""
         self._attr_name = name
+        self._attr_unique_id = f"{climate_entity._attr_unique_id}_{device_class or 'status'}"
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
         self._attr_state_class = state_class
         self._get_measurement = measurement_fn
         self._climate_entity = climate_entity
+        self._attr_available = True  # Add availability tracking
 
     @property
     def device_info(self):
         """Return device info."""
         return {
-            "identifiers": {(DOMAIN, self._climate_entity._name)},
+            "identifiers": {(DOMAIN, self._climate_entity._attr_unique_id)},
+            "name": self._climate_entity.name,
+            "manufacturer": "Eko Energis + Cotronika",
+            "model": "FCU Controller v.0.0.3RD",
+            "via_device": (DOMAIN, self._climate_entity._attr_unique_id),
         }
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self._climate_entity.available and self._attr_available
 
     @property
     def native_value(self):
         """Return the state of the sensor."""
-        return self._get_measurement()
+        try:
+            return self._get_measurement()
+        except Exception:
+            self._attr_available = False
+            return None

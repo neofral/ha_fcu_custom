@@ -4,7 +4,6 @@ from homeassistant.const import Platform
 from datetime import timedelta
 
 DOMAIN = "fcu"
-TOKEN_UPDATE_INTERVAL = 180  # Seconds (3 minutes)
 SCAN_INTERVAL = timedelta(seconds=30)  # Update every 30 seconds
 PLATFORMS = [Platform.CLIMATE, Platform.SENSOR]
 
@@ -19,8 +18,8 @@ CONF_T3D = "t3d"
 CONF_T4D = "t4d"
 CONF_SHUTDOWN_DELAY = "shutdown_delay"
 
-DEFAULT_T1D = 0.3
-DEFAULT_T2D = 0.3
-DEFAULT_T3D = 0.3
-DEFAULT_T4D = 0.3
-DEFAULT_SHUTDOWN_DELAY = 30
+DEFAULT_T1D = 0.0
+DEFAULT_T2D = 0.0
+DEFAULT_T3D = 0.0
+DEFAULT_T4D = 0.0
+DEFAULT_SHUTDOWN_DELAY = 30000
