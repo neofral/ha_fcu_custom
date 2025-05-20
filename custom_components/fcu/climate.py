@@ -156,10 +156,15 @@ class FCUClimate(ClimateEntity, RestoreEntity):
                     timeout=aiohttp.ClientTimeout(total=TIMEOUT),
                 ) as response:
                     if response.status == 200:
-                        data = await response.json()
-                        if isinstance(data, dict):
-                            self._parse_device_state(data)
-                            return
+                        try:
+                            text = await response.text()
+                            data = await response.json(content_type=None)  # Ignore content-type
+                            if isinstance(data, dict):
+                                self._parse_device_state(data)
+                                return
+                        except ValueError as e:
+                            _LOGGER.error("Invalid response data for %s: %s. Response: %s", 
+                                        self._name, str(e), text)
                     
                     _LOGGER.warning(
                         "Failed to fetch state for %s: %s", 
