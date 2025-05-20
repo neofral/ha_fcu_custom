@@ -3,13 +3,20 @@
     "config": {
     "step": {
         "user": {
-        "title": "Set up your Fan Coil Unit",
-        "description": "Enter the name, IP address, username and password of new fan coil unit.",
+        "title": "Connect to FCU",
+        "description": "Set up FCU controller integration",
         "data": {
-            "name": "Device Name",
+            "name": "Name",
             "ip_address": "IP Address"
         }
         }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
     }
     },
     "options": {
