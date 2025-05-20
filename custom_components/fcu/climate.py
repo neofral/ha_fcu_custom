@@ -76,7 +76,9 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._temperature = None
         self._water_temp = None
         self._error_index = None
-        self._target_temperature = None
+        self._target_temperature = 22  # Default target temp
+        self._cooling_temp = 22  # Initialize cooling temp
+        self._heating_temp = 22  # Initialize heating temp
         self._hvac_mode = HVACMode.OFF
         self._hvac_action = HVACAction.IDLE
         self._fan_mode = "auto"
