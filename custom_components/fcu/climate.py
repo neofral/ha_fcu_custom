@@ -155,21 +155,34 @@ class FCUClimate(ClimateEntity, RestoreEntity):
                     status_url,
                     timeout=aiohttp.ClientTimeout(total=TIMEOUT),
                 ) as response:
+                    text = await response.text()
+                    _LOGGER.debug("Raw response from %s: %s", self._name, text)
+                    
                     if response.status == 200:
                         try:
-                            text = await response.text()
-                            data = await response.json(content_type=None)  # Ignore content-type
+                            # Try to parse as JSON
+                            data = text.replace("'", '"')  # Replace single quotes with double quotes
+                            import json
+                            try:
+                                data = json.loads(data)
+                            except json.JSONDecodeError:
+                                # If JSON fails, try eval (response might be a Python dict string)
+                                import ast
+                                data = ast.literal_eval(text)
+                            
                             if isinstance(data, dict):
                                 self._parse_device_state(data)
                                 return
-                        except ValueError as e:
-                            _LOGGER.error("Invalid response data for %s: %s. Response: %s", 
+                            else:
+                                _LOGGER.error("Invalid data format for %s: %s", self._name, text)
+                        except Exception as e:
+                            _LOGGER.error("Failed to parse response for %s: %s. Response: %s", 
                                         self._name, str(e), text)
-                    
-                    _LOGGER.warning(
-                        "Failed to fetch state for %s: %s", 
-                        self._name, response.status
-                    )
+                    else:
+                        _LOGGER.warning(
+                            "Failed to fetch state for %s: %s", 
+                            self._name, response.status
+                        )
 
         except Exception as err:
             _LOGGER.error("Error fetching state for %s: %s", self._name, str(err))
