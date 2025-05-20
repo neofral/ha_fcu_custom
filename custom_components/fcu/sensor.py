@@ -43,11 +43,13 @@ class FCUTemperatureSensor(SensorEntity):
         self._attr_name = name
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
-        # Only set state_class if not an enum device class
         if device_class != SensorDeviceClass.ENUM:
             self._attr_state_class = state_class
         self._get_measurement = measurement_fn
         self._climate_entity = climate_entity
+        self._device_name = climate_entity._name
+        # Add attribute name based on measurement function
+        self._attr_name = measurement_fn.__name__ if hasattr(measurement_fn, '__name__') else None
 
     @property
     def native_value(self):
@@ -57,21 +59,11 @@ class FCUTemperatureSensor(SensorEntity):
             
         value = self._get_measurement()
         
-        if self._attr == "_device_status" and value is not None:
-            hvac_mode = self._climate_entity.hvac_mode
-            if value == 0:
-                if hvac_mode == HVACMode.HEAT:
-                    return "Heating"
-                elif hvac_mode == HVACMode.COOL:
-                    return "Cooling"
-                else:
-                    return "Working"
-            else:
-                return "Check Water Temperature"
-        
-        # Return raw value for error index
-        if self._attr == "_error_index":
-            return int(value) if value is not None else None
+        # Check for specific sensor types based on device class
+        if self.device_class == SensorDeviceClass.ENUM:
+            if isinstance(value, (int, float)):
+                return int(value)
+            return None
             
         return value
 

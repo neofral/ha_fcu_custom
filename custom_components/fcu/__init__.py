@@ -15,16 +15,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up FCU from a config entry."""
-    for platform in PLATFORMS:
-        try:
-            hass.async_create_task(
-                hass.config_entries.async_forward_entry_setup(entry, platform)
-            )
-        except Exception as ex:
-            _LOGGER.error("Error setting up platform %s: %s", platform, ex)
-            return False
-    entry.async_on_unload(entry.add_update_listener(update_listener))
-    return True
+    try:
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        entry.async_on_unload(entry.add_update_listener(update_listener))
+        return True
+    except Exception as ex:
+        _LOGGER.error("Error setting up FCU integration: %s", ex)
+        return False
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
