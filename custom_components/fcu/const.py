@@ -4,7 +4,6 @@ from homeassistant.const import Platform
 from datetime import timedelta
 
 DOMAIN = "fcu"
-SCAN_INTERVAL = timedelta(seconds=30)  # Update every 30 seconds
 PLATFORMS = [Platform.CLIMATE, Platform.SENSOR]
 
 # Add sensor constants
