@@ -71,11 +71,11 @@ class FCUOptionsFlowHandler(config_entries.OptionsFlow):
                             data = json.loads(data)
                             # Store current values
                             self.current_values = {
-                                CONF_T1D: float(data.get('t1d', 0.3)),
-                                CONF_T2D: float(data.get('t2d', 0.3)),
-                                CONF_T3D: float(data.get('t3d', 0.3)),
-                                CONF_T4D: float(data.get('t4d', 0.3)),
-                                CONF_SHUTDOWN_DELAY: int(data.get('shutdown_delay', 30))
+                                CONF_T1D: float(data.get('t1d', 0.0)),
+                                CONF_T2D: float(data.get('t2d', 0.0)),
+                                CONF_T3D: float(data.get('t3d', 0.0)),
+                                CONF_T4D: float(data.get('t4d', 0.0)),
+                                CONF_SHUTDOWN_DELAY: int(data.get('shutdown_delay', 30000))
                             }
                         except Exception as ex:
                             _LOGGER.error("Error parsing response: %s. Response: %s", ex, text)
@@ -117,11 +117,11 @@ class FCUOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
-                vol.Required(CONF_T1D, default=self.current_values.get(CONF_T1D, 0.3)): float,
-                vol.Required(CONF_T2D, default=self.current_values.get(CONF_T2D, 0.3)): float,
-                vol.Required(CONF_T3D, default=self.current_values.get(CONF_T3D, 0.3)): float,
-                vol.Required(CONF_T4D, default=self.current_values.get(CONF_T4D, 0.4)): float,
-                vol.Required(CONF_SHUTDOWN_DELAY, default=self.current_values.get(CONF_SHUTDOWN_DELAY, 30)): int,
+                vol.Required(CONF_T1D, default=self.current_values.get(CONF_T1D, 0.0)): float,
+                vol.Required(CONF_T2D, default=self.current_values.get(CONF_T2D, 0.0)): float,
+                vol.Required(CONF_T3D, default=self.current_values.get(CONF_T3D, 0.0)): float,
+                vol.Required(CONF_T4D, default=self.current_values.get(CONF_T4D, 0.0)): float,
+                vol.Required(CONF_SHUTDOWN_DELAY, default=self.current_values.get(CONF_SHUTDOWN_DELAY, 30000)): int,
             }),
             errors=errors,
         )
