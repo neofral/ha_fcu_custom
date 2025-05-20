@@ -327,7 +327,12 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     @property
     def current_temperature(self):
         """Return the current temperature."""
-        return self._temperature  # Use local value instead of coordinator data
+        if self._temperature is not None:
+            return self._temperature
+        # Fallback to coordinator data if local value not set
+        if self.coordinator.data and "rt" in self.coordinator.data:
+            return round(float(self.coordinator.data["rt"]), 1)
+        return None
 
     @property
     def target_temperature(self):
@@ -399,10 +404,11 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        if self._last_update is None:
-            return False
-        # Return True if last successful update was within timeout period
-        return datetime.now() - self._last_update < AVAILABILITY_TIMEOUT
+        # Use both coordinator status and our last update time
+        coordinator_available = self.coordinator.last_update_success
+        time_valid = (self._last_update is not None and 
+                     datetime.now() - self._last_update < AVAILABILITY_TIMEOUT)
+        return coordinator_available and time_valid
 
     async def async_set_temperature(self, **kwargs):
         """Set new target temperature."""
@@ -504,39 +510,8 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         if self.coordinator.data:
-            try:
-                # Update local values from coordinator data
-                self._temperature = round(float(self.coordinator.data.get("rt", 0)), 1)
-                self._water_temp = round(float(self.coordinator.data.get("wt", 0)), 1)
-                self._error_index = self.coordinator.data.get("error_index")
-                
-                # Update HVAC mode and action
-                operation_mode = str(self.coordinator.data.get("operation_mode", "0"))
-                self._hvac_mode = self._map_operation_mode(operation_mode)
-                
-                # Update HVAC action based on mode and temperature
-                if self._hvac_mode == HVACMode.OFF:
-                    self._hvac_action = HVACAction.OFF
-                elif self._hvac_mode == HVACMode.HEAT:
-                    if self._temperature < (self._target_temperature - 0.5):
-                        self._hvac_action = HVACAction.HEATING
-                    else:
-                        self._hvac_action = HVACAction.IDLE
-                elif self._hvac_mode == HVACMode.COOL:
-                    if self._temperature > (self._target_temperature + 0.5):
-                        self._hvac_action = HVACAction.COOLING
-                    else:
-                        self._hvac_action = HVACAction.IDLE
-                else:
-                    self._hvac_action = HVACAction.FAN
-
-                self._attributes.update({
-                    "error_index": self._error_index,
-                })
-                
-            except Exception as ex:
-                _LOGGER.error("Error handling coordinator update: %s", ex)
-        
+            self._last_update = datetime.now()
+            self._parse_device_state(self.coordinator.data)
         self.async_write_ha_state()
 
     async def _async_update_from_data(self, data):
