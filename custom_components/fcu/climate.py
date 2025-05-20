@@ -404,115 +404,28 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        # Use both coordinator status and our last update time
-        coordinator_available = self.coordinator.last_update_success
-        time_valid = (self._last_update is not None and 
-                     datetime.now() - self._last_update < AVAILABILITY_TIMEOUT)
-        return coordinator_available and time_valid
-
-    async def async_set_temperature(self, **kwargs):
-        """Set new target temperature."""
-        temperature = kwargs.get(ATTR_TEMPERATURE)
-        if temperature is None:
-            return
-        self._target_temperature = temperature
-        await self._send_control_command({"temperature": temperature})
-
-    async def async_set_hvac_mode(self, hvac_mode):
-        """Set new HVAC mode."""
-        if hvac_mode not in HVAC_MODES:
-            _LOGGER.error(f"Unsupported HVAC mode: {hvac_mode}")
-            return
-        self._hvac_mode = hvac_mode
-        await self._send_control_command({"hvac_mode": hvac_mode})
-
-    async def async_set_fan_mode(self, fan_mode):
-        """Set new fan mode."""
-        if fan_mode not in self._fan_modes:
-            _LOGGER.error(f"Unsupported fan mode: {fan_mode}")
-            return
-        self._fan_mode = fan_mode
-        await self._send_control_command({"fan_mode": fan_mode})
-
-    async def _send_control_command(self, control_data):
-        """Send control command to the device."""
-        # Handle temperature
-        if "temperature" in control_data:
-            temp = str(control_data["temperature"])
-            if self._hvac_mode == HVACMode.COOL:
-                self._cooling_temp = float(temp)
-            elif self._hvac_mode == HVACMode.HEAT:
-                self._heating_temp = float(temp)
-            self._target_temperature = float(temp)
-        else:
-            if self._hvac_mode == HVACMode.COOL:
-                temp = str(self._cooling_temp)
-            elif self._hvac_mode == HVACMode.HEAT:
-                temp = str(self._heating_temp)
-            else:
-                temp = str(self._target_temperature if self._target_temperature is not None else 22)
-
-        # Handle fan speed
-        if "fan_mode" in control_data:
-            self._fan_mode_updating = True
-            new_fan_mode = control_data["fan_mode"]
-            fan_speed = self._reverse_map_fan_speed(new_fan_mode)
-            self._fan_mode = new_fan_mode
-        else:
-            fan_speed = self._reverse_map_fan_speed(self._fan_mode)
-
-        # Build control URL and form data
-        control_url = f"http://{self._ip_address}/wifi/setmodenoauth"
-        form_data = {
-            "required_temp": temp,
-            "required_mode": self._reverse_map_hvac_mode(self._hvac_mode),
-            "required_speed": fan_speed
-        }
-
-        # Log the exact command for debugging
-        _LOGGER.info("Sending command: curl -X POST %s -d \"%s\"", 
-                    control_url, "&".join(f"{k}={v}" for k, v in form_data.items()))
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    control_url,
-                    data=form_data,  # aiohttp will format this as form-urlencoded
-                    headers={"Content-Type": "application/x-www-form-urlencoded"},
-                    timeout=aiohttp.ClientTimeout(total=TIMEOUT),
-                ) as response:
-                    response_text = await response.text()
-                    _LOGGER.debug("Response: %s", response_text)
-                    
-                    if response.status == 200:
-                        self._update_states_after_control(control_data)
-                        return
-
-                    _LOGGER.warning(
-                        "Control failed for %s: %s %s", 
-                        self._name, response.status, response_text
-                    )
-
-        except Exception as err:
-            _LOGGER.error("Failed to control %s: %s", self._name, str(err))
-
-    def _update_states_after_control(self, control_data):
-        """Update internal states after successful control command."""
-        # Update attributes
-        self._attributes.update({
-            "fan_mode_cooling": self._fan_mode_cooling,
-            "fan_mode_heating": self._fan_mode_heating,
-            "fan_mode_fan": self._fan_mode_fan
-        })
-        self.async_write_ha_state()
-
+        if self.coordinator.data and "rt" in self.coordinator.data:
+            # Consider available if we have temperature data
+            return True
+        return False
+    
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         if self.coordinator.data:
-            self._last_update = datetime.now()
-            self._parse_device_state(self.coordinator.data)
-        self.async_write_ha_state()
+            try:
+                self._temperature = round(float(self.coordinator.data.get("rt", 0)), 1)
+                self._water_temp = round(float(self.coordinator.data.get("wt", 0)), 1)
+                self._error_index = self.coordinator.data.get("error_index", None)
+                
+                # Update HVAC mode and action from data
+                operation_mode = str(self.coordinator.data.get("operation_mode", "0"))
+                self._hvac_mode = self._map_operation_mode(operation_mode)
+                
+                # Update the state
+                self.async_write_ha_state()
+            except Exception as ex:
+                _LOGGER.error("Error handling coordinator update: %s", ex)
 
     async def _async_update_from_data(self, data):
         """Update attrs from data."""
