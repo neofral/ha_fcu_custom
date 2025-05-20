@@ -11,3 +11,16 @@ PLATFORMS = [Platform.CLIMATE, Platform.SENSOR]
 # Add sensor constants
 DEVICE_STATUS_SENSOR = "device_status"
 ERROR_INDEX_SENSOR = "error_index"
+
+# Extra configuration parameters
+CONF_T1D = "t1d"
+CONF_T2D = "t2d"
+CONF_T3D = "t3d"
+CONF_T4D = "t4d"
+CONF_SHUTDOWN_DELAY = "shutdown_delay"
+
+DEFAULT_T1D = 0.3
+DEFAULT_T2D = 0.3
+DEFAULT_T3D = 0.3
+DEFAULT_T4D = 0.3
+DEFAULT_SHUTDOWN_DELAY = 30

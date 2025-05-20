@@ -22,9 +22,19 @@
     "options": {
     "step": {
         "init": {
-        "title": "Options for Fan Coil Unit",
-        "description": "Adjust additional settings for your fan coil unit."
+        "title": "FCU Extra Configuration",
+        "description": "Adjust additional settings for your fan coil unit.",
+        "data": {
+            "t1d": "T1D Temperature Delta",
+            "t2d": "T2D Temperature Delta",
+            "t3d": "T3D Temperature Delta",
+            "t4d": "T4D Temperature Delta",
+            "shutdown_delay": "Shutdown Delay (seconds)"
         }
+        }
+    },
+    "error": {
+        "update_failed": "Failed to update device configuration"
     }
     }
 }
