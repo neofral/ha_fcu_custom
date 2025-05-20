@@ -9,76 +9,76 @@ from .const import DOMAIN
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up the FCU temperature sensors."""
-    climate_entity = hass.data[DOMAIN][config_entry.data["name"]]
-    
+    coordinator = hass.data[DOMAIN][config_entry.data["name"]]
+
     sensors = [
         FCUTemperatureSensor(
-            f"{climate_entity.name} Room Temperature",
+            coordinator,
+            f"{config_entry.data['name']} Room Temperature",
             UnitOfTemperature.CELSIUS,
             SensorDeviceClass.TEMPERATURE,
             SensorStateClass.MEASUREMENT,
-            lambda: climate_entity._temperature,
-            climate_entity,
+            "rt",  # Key for room temperature
         ),
         FCUTemperatureSensor(
-            f"{climate_entity.name} Water Temperature",
+            coordinator,
+            f"{config_entry.data['name']} Water Temperature",
             UnitOfTemperature.CELSIUS,
             SensorDeviceClass.TEMPERATURE,
             SensorStateClass.MEASUREMENT,
-            lambda: climate_entity._water_temp,
-            climate_entity,
+            "wt",  # Key for water temperature
         ),
         FCUTemperatureSensor(
-            f"{climate_entity.name} Device Status",
+            coordinator,
+            f"{config_entry.data['name']} Device Status",
             None,
             SensorDeviceClass.ENUM,
             None,
-            lambda: climate_entity._device_status,
-            climate_entity,
+            "device_status",  # Key for device status
         ),
         FCUTemperatureSensor(
-            f"{climate_entity.name} Error Index",
+            coordinator,
+            f"{config_entry.data['name']} Error Index",
             None,
             SensorDeviceClass.ENUM,
             None,
-            lambda: climate_entity._error_index,
-            climate_entity,
+            "error_index",  # Key for error index
         ),
     ]
     async_add_entities(sensors, True)
 
 class FCUTemperatureSensor(SensorEntity):
     """Representation of a Temperature Sensor."""
-    def __init__(self, name, unit, device_class, state_class, measurement_fn, climate_entity):
+    def __init__(self, coordinator, name, unit, device_class, state_class, key):
         """Initialize the sensor."""
         self._attr_name = name
-        self._attr_unique_id = f"{climate_entity.unique_id}_{name.lower().replace(' ', '_')}"
+        self._attr_unique_id = f"{coordinator.name}_{key}"
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
         self._attr_state_class = state_class
-        self._get_measurement = measurement_fn
-        self._climate_entity = climate_entity
+        self._coordinator = coordinator
+        self._key = key
 
     @property
     def device_info(self):
         """Return device info."""
         return {
-            "identifiers": {(DOMAIN, self._climate_entity.unique_id)},
-            "name": self._climate_entity.name,
+            "identifiers": {(DOMAIN, self._coordinator.name)},
+            "name": self._coordinator.name,
             "manufacturer": "Eko Energis + Cotronika",
             "model": "FCU Controller v.0.0.3RD",
         }
 
     @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._climate_entity.available and self._attr_available
-
-    @property
     def native_value(self):
         """Return the state of the sensor."""
-        try:
-            return self._get_measurement()
-        except Exception:
-            self._attr_available = False
-            return None
+        return self._coordinator.data.get(self._key)
+
+    async def async_update(self):
+        """Update the sensor."""
+        await self._coordinator.async_request_refresh()
+
+    @property
+    def available(self):
+        """Return True if the sensor is available."""
+        return self._coordinator.last_update_success
