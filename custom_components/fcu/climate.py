@@ -8,6 +8,7 @@ from homeassistant.const import (
     UnitOfTemperature,
     ATTR_TEMPERATURE,
 )
+from homeassistant.helpers.restore_state import RestoreEntity
 import aiohttp
 import asyncio  # Add this import
 import logging
