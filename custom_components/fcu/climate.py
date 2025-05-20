@@ -52,20 +52,10 @@ RETRY_DELAY = 2  # seconds
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up the fan coil unit climate entity."""
-    # Clear any existing update jobs for this entry
-    if config_entry.entry_id in hass.data.get(DOMAIN, {}):
-        if f"{config_entry.data['name']}_cleanup" in hass.data[DOMAIN]:
-            hass.data[DOMAIN][f"{config_entry.data['name']}_cleanup"]()
-            
     name = config_entry.data["name"]
     ip_address = config_entry.data["ip_address"]
-    use_auth = config_entry.data.get("use_auth", True)
     
-    # Only get credentials if auth is enabled
-    username = config_entry.data.get("username") if use_auth else None
-    password = config_entry.data.get("password") if use_auth else None
-
-    climate_entity = FCUClimate(name, ip_address, use_auth, username, password)
+    climate_entity = FCUClimate(name, ip_address)
     async_add_entities([climate_entity], True)
     
     # Store climate entity in hass.data for sensors to access
@@ -87,16 +77,11 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 class FCUClimate(ClimateEntity, RestoreEntity):
     """Representation of a fan coil unit as a climate entity."""
 
-    def __init__(self, name, ip_address, use_auth=True, username=None, password=None):
+    def __init__(self, name, ip_address):
         """Initialize the climate entity."""
         self._attr_unique_id = name
         self._name = name
         self._ip_address = ip_address
-        self._use_auth = use_auth
-        # Only store credentials if auth is enabled
-        self._username = username if use_auth else None
-        self._password = password if use_auth else None
-        self._token = None
         self._temperature = None
         self._water_temp = None
         self._temp2 = None
@@ -155,125 +140,34 @@ class FCUClimate(ClimateEntity, RestoreEntity):
     async def async_update(self):
         """Fetch new state data for the entity."""
         try:
-            # Re-read use_auth from config entry
-            entry = next((
-                entry for entry in self.hass.config_entries.async_entries(DOMAIN)
-                if entry.data.get("name") == self._name
-            ), None)
-            
-            if entry:
-                if entry.data.get("use_auth") != self._use_auth:
-                    self._use_auth = entry.data["use_auth"]
-                    self._username = entry.data.get("username") if self._use_auth else None
-                    self._password = entry.data.get("password") if self._use_auth else None
-                    self._token = None
-            
-            await self._fetch_token()
             await self._fetch_device_state()
         except Exception as err:
             _LOGGER.error("Failed to update %s: %s", self._name, str(err))
             # Don't clear state on error to maintain last known state
 
-    async def _fetch_token(self):
-        """Fetch a new token from the device."""
-        if not self._use_auth:
-            _LOGGER.debug("Skipping token fetch for %s (auth disabled)", self._name)
-            self._token = "no_auth_token"
-            return
-
-        login_url = f"http://{self._ip_address}/login.htm"
-        payload = {"username": self._username, "password": self._password}
-        headers = {
-            "x-requested-with": "myApp",
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
+    async def _fetch_device_state(self):
+        """Fetch the current state of the device."""
+        status_url = f"http://{self._ip_address}/wifi/shortstatus"
 
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    login_url,
-                    data=payload,
-                    headers=headers,
+                    status_url,
                     timeout=aiohttp.ClientTimeout(total=TIMEOUT),
-                    allow_redirects=False,
                 ) as response:
-                    if response.status != 200:
-                        raise aiohttp.ClientError(f"Invalid response status: {response.status}")
+                    if response.status == 200:
+                        data = await response.json()
+                        if isinstance(data, dict):
+                            self._parse_device_state(data)
+                            return
                     
-                    content_type = response.headers.get("content-type", "").lower()
-                    if "text/plain" not in content_type:
-                        raise aiohttp.ClientError(f"Invalid content type: {content_type}")
-
-                    token = (await response.text()).strip()
-                    if not token or '\n' in token or '\r' in token:
-                        raise aiohttp.ClientError("Invalid token format")
-                    
-                    self._token = token
-                    _LOGGER.debug("Token fetched successfully for %s", self._name)
-
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-            _LOGGER.error("Failed to fetch token for %s: %s", self._name, str(err))
-            self._token = None
-
-    async def _fetch_device_state(self):
-        """Fetch the current state of the device."""
-        if self._use_auth and not self._token:
-            _LOGGER.warning("No valid token available for %s, skipping state fetch", self._name)
-            return
-
-        status_url = f"http://{self._ip_address}/wifi/{'status' if self._use_auth else 'shortstatus'}"
-        headers = None
-        data = None
-        
-        if self._use_auth:
-            headers = {
-                **COMMON_HEADERS,
-                "Authorization": f"Bearer {self._token.strip()}",
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Accept": CONTENT_TYPE_JSON,
-            }
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                for _ in range(RETRY_ATTEMPTS):
-                    try:
-                        async with session.post(
-                            status_url,
-                            headers=headers,
-                            timeout=aiohttp.ClientTimeout(total=TIMEOUT),
-                            allow_redirects=False,
-                        ) as response:
-                            if response.status == 200:
-                                try:
-                                    data = await response.json()
-                                    if isinstance(data, dict):
-                                        self._parse_device_state(data)
-                                        _LOGGER.debug("State fetched for %s: %s", self._name, data)
-                                        return
-                                except ValueError:
-                                    pass  # Will be handled in exception block
-                            
-                            if self._use_auth and response.status == 401:
-                                await self._fetch_token()
-                                continue
-
-                            # Non-200 status or invalid JSON
-                            _LOGGER.warning(
-                                "Invalid response from %s: %s %s", 
-                                self._name, response.status, await response.text()
-                            )
-                    except asyncio.TimeoutError:
-                        _LOGGER.warning("Timeout fetching state for %s, retrying...", self._name)
-                    except aiohttp.ClientError as err:
-                        _LOGGER.warning("Error fetching state for %s: %s", self._name, err)
-                    
-                    await asyncio.sleep(RETRY_DELAY)
-
-                _LOGGER.error("Failed to fetch state for %s after %d attempts", 
-                            self._name, RETRY_ATTEMPTS)
+                    _LOGGER.warning(
+                        "Failed to fetch state for %s: %s", 
+                        self._name, response.status
+                    )
 
         except Exception as err:
-            _LOGGER.error("Unexpected error fetching state for %s: %s", self._name, str(err))
+            _LOGGER.error("Error fetching state for %s: %s", self._name, str(err))
 
     def _parse_device_state(self, data):
         """Parse the state data from the device."""
@@ -537,13 +431,6 @@ class FCUClimate(ClimateEntity, RestoreEntity):
 
     async def _set_control(self, control_data):
         """Send control command to the device."""
-        if self._use_auth and not self._token:
-            await self._fetch_token()
-            if not self._token:
-                _LOGGER.error("No valid token available for %s, cannot set control", self._name)
-                return
-
-        # Get current mode and prepare data
         current_mode = control_data.get("hvac_mode", self._hvac_mode)
         mode = self._reverse_map_hvac_mode(current_mode)
         
@@ -568,80 +455,32 @@ class FCUClimate(ClimateEntity, RestoreEntity):
             self._fan_mode_updating = True
             new_fan_mode = control_data["fan_mode"]
             fan_speed = self._reverse_map_fan_speed(new_fan_mode)
-            
-            # Update mode-specific fan state
-            if current_mode == HVACMode.COOL:
-                self._fan_mode_cooling = new_fan_mode
-            elif current_mode == HVACMode.HEAT:
-                self._fan_mode_heating = new_fan_mode
-            elif current_mode == HVACMode.FAN_ONLY:
-                self._fan_mode_fan = new_fan_mode
             self._fan_mode = new_fan_mode
         else:
             fan_speed = self._reverse_map_fan_speed(self._fan_mode)
 
-        # Different request format for auth/no-auth but both use POST
-        control_url = f"http://{self._ip_address}/wifi/{'setmode' if self._use_auth else 'setmodenoauth'}"
-        headers = None
-        
-        if self._use_auth:
-            headers = {
-                **COMMON_HEADERS,
-                "Authorization": f"Bearer {self._token.strip()}",
-                "Content-Type": "application/x-www-form-urlencoded",
-            }
-            device_data = {
-                "required_mode": mode,
-                "required_temp": temp,
-                "required_speed": fan_speed,
-            }
-            if "fan_mode" in control_data:
-                if current_mode == HVACMode.COOL:
-                    device_data["fan_state_current_cooling"] = fan_speed
-                elif current_mode == HVACMode.HEAT:
-                    device_data["fan_state_current_heating"] = fan_speed
-                elif current_mode == HVACMode.FAN_ONLY:
-                    device_data["fan_state_current_fan"] = fan_speed
-            payload = "&".join(f"{k}={v}" for k, v in device_data.items())
-        else:
-            # No auth mode requires exact format
-            payload = f"required_temp={temp}&required_mode={mode}&required_speed={fan_speed}"
+        # Build control URL with parameters
+        control_url = f"http://{self._ip_address}/wifi/setmodenoauth"
+        payload = f"required_temp={temp}&required_mode={mode}&required_speed={fan_speed}"
 
-        _LOGGER.debug("Sending control - URL: %s, Headers: %s, Payload: %s", 
-                     control_url, headers, payload)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    control_url,
+                    data=payload,
+                    timeout=aiohttp.ClientTimeout(total=TIMEOUT),
+                ) as response:
+                    if response.status == 200:
+                        self._update_states_after_control(control_data)
+                        return
 
-        for attempt in range(RETRY_ATTEMPTS):
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        control_url,
-                        headers=headers,
-                        data=payload,
-                        timeout=aiohttp.ClientTimeout(total=TIMEOUT),
-                        allow_redirects=False,
-                    ) as response:
-                        if response.status == 200:
-                            self._update_states_after_control(control_data)
-                            return
+                    _LOGGER.warning(
+                        "Control failed for %s: %s", 
+                        self._name, response.status
+                    )
 
-                        if self._use_auth and response.status == 401:
-                            await self._fetch_token()
-                            continue
-
-                        response_text = await response.text()
-                        _LOGGER.warning(
-                            "Control failed for %s: %s %s", 
-                            self._name, response.status, response_text
-                        )
-
-            except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-                _LOGGER.warning("Attempt %d failed for %s: %s", attempt + 1, self._name, str(err))
-                if attempt < RETRY_ATTEMPTS - 1:
-                    await asyncio.sleep(RETRY_DELAY)
-                else:
-                    _LOGGER.error("Failed to send control command after %d attempts", RETRY_ATTEMPTS)
-
-        raise aiohttp.ClientError(f"Failed to control {self._name} after {RETRY_ATTEMPTS} attempts")
+        except Exception as err:
+            _LOGGER.error("Failed to control %s: %s", self._name, str(err))
 
     def _update_states_after_control(self, control_data):
         """Update internal states after successful control command."""
