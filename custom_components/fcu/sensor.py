@@ -5,64 +5,36 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import UnitOfTemperature
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up the FCU sensors."""
-    climate_entity = hass.data[DOMAIN][config_entry.data["name"]]
+    coordinator = hass.data[DOMAIN][config_entry.data["name"]]
 
     sensors = [
-        FCUSensor(
-            climate_entity,
-            f"{climate_entity.name} Room Temperature",
-            UnitOfTemperature.CELSIUS,
-            SensorDeviceClass.TEMPERATURE,
-            SensorStateClass.MEASUREMENT,
-            "room_temperature",
-        ),
-        FCUSensor(
-            climate_entity,
-            f"{climate_entity.name} Water Temperature",
-            UnitOfTemperature.CELSIUS,
-            SensorDeviceClass.TEMPERATURE,
-            SensorStateClass.MEASUREMENT,
-            "water_temperature",
-        ),
-        FCUSensor(
-            climate_entity,
-            f"{climate_entity.name} Device Status",
-            None,
-            None,
-            None,
-            "device_status",
-        ),
-        FCUSensor(
-            climate_entity,
-            f"{climate_entity.name} Error Index",
-            None,
-            None,
-            None,
-            "error_index",
-        ),
+        FCUSensor(coordinator, "Room Temperature", "rt", UnitOfTemperature.CELSIUS),
+        FCUSensor(coordinator, "Water Temperature", "wt", UnitOfTemperature.CELSIUS),
+        FCUSensor(coordinator, "Device Status", "device_status", None),
+        FCUSensor(coordinator, "Error Index", "error_index", None),
     ]
     async_add_entities(sensors, True)
 
-class FCUSensor(SensorEntity):
+class FCUSensor(CoordinatorEntity, SensorEntity):
     """Representation of an FCU sensor."""
-    def __init__(self, climate_entity, name, unit, device_class, state_class, attribute):
+
+    def __init__(self, coordinator, name, key, unit):
         """Initialize the sensor."""
-        self._climate_entity = climate_entity
+        super().__init__(coordinator)
         self._attr_name = name
+        self._key = key
         self._attr_native_unit_of_measurement = unit
-        self._attr_device_class = device_class
-        self._attr_state_class = state_class
-        self._attribute = attribute
-        self._attr_unique_id = f"{climate_entity.unique_id}_{attribute}"
+        self._attr_unique_id = f"{coordinator.name}_{key}"
 
     @property
     def native_value(self):
         """Return the state of the sensor."""
-        return self._climate_entity.extra_state_attributes.get(self._attribute)
+        return self.coordinator.data.get(self._key)
 
     @property
     def device_info(self):
