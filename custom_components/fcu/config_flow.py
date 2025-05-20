@@ -89,34 +89,28 @@ class FCUOptionsFlowHandler(config_entries.OptionsFlow):
             await self._fetch_current_values()
 
         if user_input is not None:
-            # Only send changed values to device
-            changed_values = {
-                k: v for k, v in user_input.items() 
-                if k in self.current_values and v != self.current_values[k]
-            }
-            
-            if changed_values:
-                ip_address = self.config_entry.data[CONF_IP_ADDRESS]
-                payload = "&".join(f"{k}={v}" for k, v in changed_values.items())
+            ip_address = self.config_entry.data[CONF_IP_ADDRESS]
+            # Format payload like setmodenoauth
+            payload = "&".join([
+                f"{k}={v}" for k, v in user_input.items()
+            ])
+            _LOGGER.debug("Sending payload: %s", payload)
 
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post(
-                            f"http://{ip_address}/wifi/extraconfig",
-                            data=payload,
-                            headers={"Content-Type": "application/x-www-form-urlencoded"},
-                        ) as response:
-                            if response.status != 200:
-                                _LOGGER.error("Failed to update config: %s", await response.text())
-                                errors["base"] = "update_failed"
-                            else:
-                                self.current_values.update(changed_values)
-                                return self.async_create_entry(title="", data=self.current_values)
-                except Exception as ex:
-                    _LOGGER.error("Error updating config: %s", ex)
-                    errors["base"] = "update_failed"
-            else:
-                return self.async_create_entry(title="", data=self.current_values)
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        f"http://{ip_address}/wifi/extraconfig",
+                        data=payload,  # Will be sent as form-urlencoded automatically
+                    ) as response:
+                        response_text = await response.text()
+                        _LOGGER.debug("Response: %s", response_text)
+                        if response.status == 200:
+                            await self._fetch_current_values()  # Refresh values
+                            return self.async_create_entry(title="", data=self.current_values)
+                        errors["base"] = "update_failed"
+            except Exception as ex:
+                _LOGGER.error("Error updating config: %s", ex)
+                errors["base"] = "update_failed"
 
         return self.async_show_form(
             step_id="init",
