@@ -10,19 +10,31 @@ from homeassistant.const import (
 )
 from homeassistant.helpers.restore_state import RestoreEntity
 import aiohttp
-import asyncio  # Add this import
+import asyncio
 import logging
-from datetime import timedelta
+from datetime import timedelta, datetime
 from homeassistant.core import CALLBACK_TYPE
 from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.util.logging import Throttle
 from .const import DOMAIN, SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
+
+def throttle(interval):
+    """Decorator that prevents a function from being called more than once every interval."""
+    def decorator(func):
+        last_called = {}
+        async def wrapper(*args, **kwargs):
+            now = datetime.now()
+            if func not in last_called or now - last_called[func] >= interval:
+                last_called[func] = now
+                return await func(*args, **kwargs)
+        return wrapper
+    return decorator
+
 MIN_TIME_BETWEEN_LOGS = timedelta(seconds=60)
 
-@Throttle(MIN_TIME_BETWEEN_LOGS)
-def log_with_throttle(logger, level, msg, *args):
+@throttle(MIN_TIME_BETWEEN_LOGS)
+async def log_with_throttle(logger, level, msg, *args):
     """Log with throttling to avoid excessive messages."""
     logger.log(level, msg, *args)
 
