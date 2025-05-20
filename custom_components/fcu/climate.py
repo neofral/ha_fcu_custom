@@ -32,6 +32,11 @@ RETRY_DELAY = 2  # seconds
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up the fan coil unit climate entity."""
+    # Clear any existing update jobs for this entry
+    if config_entry.entry_id in hass.data.get(DOMAIN, {}):
+        if f"{config_entry.data['name']}_cleanup" in hass.data[DOMAIN]:
+            hass.data[DOMAIN][f"{config_entry.data['name']}_cleanup"]()
+            
     name = config_entry.data["name"]
     ip_address = config_entry.data["ip_address"]
     use_auth = config_entry.data.get("use_auth", True)
@@ -59,7 +64,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     # Store cleanup function
     hass.data[DOMAIN][f"{name}_cleanup"] = remove_update_interval
 
-class FCUClimate(ClimateEntity):
+class FCUClimate(ClimateEntity, RestoreEntity):
     """Representation of a fan coil unit as a climate entity."""
 
     def __init__(self, name, ip_address, use_auth=True, username=None, password=None):
@@ -102,18 +107,52 @@ class FCUClimate(ClimateEntity):
         self._device_status = None
         self._error_index = None
 
+    async def async_added_to_hass(self):
+        """Run when entity about to be added."""
+        await super().async_added_to_hass()
+        
+        # Restore previous state if available
+        last_state = await self.async_get_last_state()
+        if last_state is not None:
+            if last_state.state:
+                self._hvac_mode = last_state.state
+            if last_state.attributes.get('fan_mode'):
+                self._fan_mode = last_state.attributes['fan_mode']
+            if last_state.attributes.get('temperature'):
+                self._target_temperature = last_state.attributes['temperature']
+            
+            # Restore mode-specific temperatures and fan modes
+            if last_state.attributes.get(f"{self._name}_fan_mode_cooling"):
+                self._fan_mode_cooling = last_state.attributes[f"{self._name}_fan_mode_cooling"]
+            if last_state.attributes.get(f"{self._name}_fan_mode_heating"):
+                self._fan_mode_heating = last_state.attributes[f"{self._name}_fan_mode_heating"]
+            if last_state.attributes.get(f"{self._name}_fan_mode_fan"):
+                self._fan_mode_fan = last_state.attributes[f"{self._name}_fan_mode_fan"]
+        
+        # Force initial update
+        await self.async_update()
+
     async def async_update(self):
         """Fetch new state data for the entity."""
-        # Re-read use_auth from config entry options
-        entry = self.hass.config_entries.async_get_entry(self.entity_id)
-        if entry and entry.data.get("use_auth") != self._use_auth:
-            self._use_auth = entry.data["use_auth"]
-            self._username = entry.data.get("username") if self._use_auth else None
-            self._password = entry.data.get("password") if self._use_auth else None
-            self._token = None
-        
-        await self._fetch_token()
-        await self._fetch_device_state()
+        try:
+            # Re-read use_auth from config entry
+            entry = next((
+                entry for entry in self.hass.config_entries.async_entries(DOMAIN)
+                if entry.data.get("name") == self._name
+            ), None)
+            
+            if entry:
+                if entry.data.get("use_auth") != self._use_auth:
+                    self._use_auth = entry.data["use_auth"]
+                    self._username = entry.data.get("username") if self._use_auth else None
+                    self._password = entry.data.get("password") if self._use_auth else None
+                    self._token = None
+            
+            await self._fetch_token()
+            await self._fetch_device_state()
+        except Exception as err:
+            _LOGGER.error("Failed to update %s: %s", self._name, str(err))
+            # Don't clear state on error to maintain last known state
 
     async def _fetch_token(self):
         """Fetch a new token from the device."""
