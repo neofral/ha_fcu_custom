@@ -52,6 +52,9 @@ COMMON_HEADERS = {
 RETRY_ATTEMPTS = 3
 RETRY_DELAY = 2  # seconds
 
+# Add timeout constant
+AVAILABILITY_TIMEOUT = timedelta(minutes=10)
+
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up FCU climate based on config_entry."""
     data = hass.data[DOMAIN][entry.entry_id]
@@ -88,6 +91,7 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._attr_min_temp = 16
         self._attr_max_temp = 30
         self._attr_precision = 0.5
+        self._last_update = None
 
     async def async_added_to_hass(self):
         """Run when entity about to be added."""
@@ -167,6 +171,9 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     def _parse_device_state(self, data):
         """Parse the state data from the device."""
         try:
+            # Update successful timestamp
+            self._last_update = datetime.now()
+            
             # Parse temperatures with 1 decimal precision
             self._temperature = round(float(data.get("rt", 0)), 1)
             self._water_temp = round(float(data.get("wt", 0)), 1)
@@ -386,6 +393,14 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     def max_temp(self):
         """Return the maximum temperature."""
         return self._attr_max_temp
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if self._last_update is None:
+            return False
+        # Return True if last successful update was within timeout period
+        return datetime.now() - self._last_update < AVAILABILITY_TIMEOUT
 
     async def async_set_temperature(self, **kwargs):
         """Set new target temperature."""
