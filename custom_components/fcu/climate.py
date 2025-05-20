@@ -463,6 +463,9 @@ class FCUClimate(ClimateEntity, RestoreEntity):
         control_url = f"http://{self._ip_address}/wifi/setmodenoauth"
         payload = f"required_temp={temp}&required_mode={mode}&required_speed={fan_speed}"
 
+        # Log the exact command
+        _LOGGER.info("Sending command: curl -X POST %s -d \"%s\"", control_url, payload)
+
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
