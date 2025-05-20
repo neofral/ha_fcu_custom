@@ -105,10 +105,10 @@ class FCUClimate(ClimateEntity, RestoreEntity):
         self._heating_temp = 23
         self._attr_min_temp = 16
         self._attr_max_temp = 30
-        self._attr_precision = 0.1
+        self._attr_precision = 0.5
         self._attr_target_temperature_step = 0.1
-        self._target_temp_high = 0.3  # Cooling hysteresis
-        self._target_temp_low = 0.3   # Heating hysteresis
+        self._target_temp_high = 0.5  # Cooling hysteresis
+        self._target_temp_low = 0.5   # Heating hysteresis
         self._device_status = None
         self._error_index = None
 
@@ -193,13 +193,15 @@ class FCUClimate(ClimateEntity, RestoreEntity):
             # Parse temperatures with 1 decimal precision
             self._temperature = round(float(data.get("rt", 0)), 1)  # Room temperature
             self._water_temp = round(float(data.get("wt", 0)), 1)  # Water temperature
-            self._device_status = round(float(data.get("device_status", 0)), 1)  # Device status
-            self._error_index = round(float(data.get("error_index", 0)), 1)  # Error index
+            self._device_status = data.get("device_status", None)  # Device status
+            self._error_index = data.get("error_index", None)  # Error index
             
-            # Store temperatures in attributes with same precision
+            # Update attributes for sensors
             self._attributes.update({
+                "room_temperature": self._temperature,
                 "water_temperature": self._water_temp,
-                "room_temperature_2": self._temp2,
+                "device_status": self._device_status,
+                "error_index": self._error_index,
             })
             
             # Get operation mode
@@ -393,13 +395,8 @@ class FCUClimate(ClimateEntity, RestoreEntity):
 
     @property
     def extra_state_attributes(self):
-        """Return device specific state attributes."""
-        return {
-            f"{self._name}_water_temperature": self._water_temp,
-            f"{self._name}_fan_mode_cooling": self._fan_mode_cooling,
-            f"{self._name}_fan_mode_heating": self._fan_mode_heating,
-            f"{self._name}_fan_mode_fan": self._fan_mode_fan,
-        }
+        """Return device-specific state attributes."""
+        return self._attributes
 
     @property
     def min_temp(self):
