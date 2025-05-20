@@ -477,27 +477,36 @@ class FCUClimate(ClimateEntity, RestoreEntity):
         else:
             fan_speed = self._reverse_map_fan_speed(self._fan_mode)
 
-        # Build control URL with parameters
+        # Build control URL and form data
         control_url = f"http://{self._ip_address}/wifi/setmodenoauth"
-        payload = f"required_temp={temp}&required_mode={mode}&required_speed={fan_speed}"
+        form_data = {
+            "required_temp": temp,
+            "required_mode": mode,
+            "required_speed": fan_speed
+        }
 
-        # Log the exact command
-        _LOGGER.info("Sending command: curl -X POST %s -d \"%s\"", control_url, payload)
+        # Log the exact command for debugging
+        _LOGGER.info("Sending command: curl -X POST %s -d \"%s\"", 
+                    control_url, "&".join(f"{k}={v}" for k, v in form_data.items()))
 
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     control_url,
-                    data=payload,
+                    data=form_data,  # aiohttp will format this as form-urlencoded
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
                     timeout=aiohttp.ClientTimeout(total=TIMEOUT),
                 ) as response:
+                    response_text = await response.text()
+                    _LOGGER.debug("Response: %s", response_text)
+                    
                     if response.status == 200:
                         self._update_states_after_control(control_data)
                         return
 
                     _LOGGER.warning(
-                        "Control failed for %s: %s", 
-                        self._name, response.status
+                        "Control failed for %s: %s %s", 
+                        self._name, response.status, response_text
                     )
 
         except Exception as err:
