@@ -15,9 +15,16 @@ import logging
 from datetime import timedelta
 from homeassistant.core import CALLBACK_TYPE
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.util.logging import Throttle
 from .const import DOMAIN, SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
+MIN_TIME_BETWEEN_LOGS = timedelta(seconds=60)
+
+@Throttle(MIN_TIME_BETWEEN_LOGS)
+def log_with_throttle(logger, level, msg, *args):
+    """Log with throttling to avoid excessive messages."""
+    logger.log(level, msg, *args)
 
 HVAC_MODES = [HVACMode.OFF, HVACMode.COOL, HVACMode.HEAT, HVACMode.FAN_ONLY]
 FAN_MODES = ["low", "medium", "high", "auto"]
@@ -316,7 +323,8 @@ class FCUClimate(ClimateEntity, RestoreEntity):
                     self._target_temperature, self._fan_mode)
 
         except Exception as ex:
-            _LOGGER.error("Error parsing device state: %s. Data: %s", ex, data)
+            log_with_throttle(_LOGGER, logging.ERROR, 
+                "Error parsing device state: %s. Data: %s", ex, data)
         finally:
             # Clear the fan mode updating flag
             if hasattr(self, '_fan_mode_updating'):
