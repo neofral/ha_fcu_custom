@@ -1,12 +1,13 @@
 {
     "domain": "fcu",
-    "name": "Eko Energis FCU Integration",
-    "version": "3.1",
-    "documentation": "https://github.com/neofral/ha_fcu_custom",
-    "requirements": [],
+    "name": "Fan Coil Unit Controller",
+    "version": "1.0.0",
+    "documentation": "https://github.com/yourusername/ha_fcu_custom",
     "dependencies": [],
-    "codeowners": ["@neofral"],
-    "config_flow": true,
+    "codeowners": ["@yourusername"],
+    "requirements": [],
     "iot_class": "local_polling",
-    "integration_type": "device"
+    "config_flow": true,
+    "async_config_flow": true,
+    "async_imports_support": true
 }
