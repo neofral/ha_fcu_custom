@@ -223,6 +223,7 @@ class FCUClimate(ClimateEntity, RestoreEntity):
 
         status_url = f"http://{self._ip_address}/wifi/{'status' if self._use_auth else 'shortstatus'}"
         headers = None
+        data = None
         
         if self._use_auth:
             headers = {
@@ -234,28 +235,45 @@ class FCUClimate(ClimateEntity, RestoreEntity):
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    status_url,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=TIMEOUT),
-                    allow_redirects=False,
-                ) as response:
-                    if response.status != 200:
-                        raise aiohttp.ClientError(f"Invalid response status: {response.status}")
+                for _ in range(RETRY_ATTEMPTS):
+                    try:
+                        async with session.post(
+                            status_url,
+                            headers=headers,
+                            timeout=aiohttp.ClientTimeout(total=TIMEOUT),
+                            allow_redirects=False,
+                        ) as response:
+                            if response.status == 200:
+                                try:
+                                    data = await response.json()
+                                    if isinstance(data, dict):
+                                        self._parse_device_state(data)
+                                        _LOGGER.debug("State fetched for %s: %s", self._name, data)
+                                        return
+                                except ValueError:
+                                    pass  # Will be handled in exception block
+                            
+                            if self._use_auth and response.status == 401:
+                                await self._fetch_token()
+                                continue
+
+                            # Non-200 status or invalid JSON
+                            _LOGGER.warning(
+                                "Invalid response from %s: %s %s", 
+                                self._name, response.status, await response.text()
+                            )
+                    except asyncio.TimeoutError:
+                        _LOGGER.warning("Timeout fetching state for %s, retrying...", self._name)
+                    except aiohttp.ClientError as err:
+                        _LOGGER.warning("Error fetching state for %s: %s", self._name, err)
                     
-                    content_type = response.headers.get("content-type", "").lower()
-                    if CONTENT_TYPE_JSON not in content_type:
-                        raise aiohttp.ClientError(f"Invalid content type: {content_type}")
+                    await asyncio.sleep(RETRY_DELAY)
 
-                    data = await response.json()
-                    if not isinstance(data, dict):
-                        raise aiohttp.ClientError("Invalid response format")
+                _LOGGER.error("Failed to fetch state for %s after %d attempts", 
+                            self._name, RETRY_ATTEMPTS)
 
-                    self._parse_device_state(data)
-                    _LOGGER.debug("State fetched for %s: %s", self._name, data)
-
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as err:
-            _LOGGER.error("Failed to fetch state for %s: %s", self._name, str(err))
+        except Exception as err:
+            _LOGGER.error("Unexpected error fetching state for %s: %s", self._name, str(err))
 
     def _parse_device_state(self, data):
         """Parse the state data from the device."""
@@ -602,21 +620,20 @@ class FCUClimate(ClimateEntity, RestoreEntity):
                         data=payload,
                         timeout=aiohttp.ClientTimeout(total=TIMEOUT),
                         allow_redirects=False,
-                        ssl=False
                     ) as response:
-                        response_text = await response.text()
-                        _LOGGER.debug("Control response [%d]: %s", response.status, response_text)
-                        
-                        if self._use_auth and response.status == 401:  # Unauthorized
+                        if response.status == 200:
+                            self._update_states_after_control(control_data)
+                            return
+
+                        if self._use_auth and response.status == 401:
                             await self._fetch_token()
                             continue
-                        
-                        if response.status != 200:
-                            raise aiohttp.ClientError(f"Invalid response status: {response.status}")
 
-                        # Success - update states and return
-                        self._update_states_after_control(control_data)
-                        return
+                        response_text = await response.text()
+                        _LOGGER.warning(
+                            "Control failed for %s: %s %s", 
+                            self._name, response.status, response_text
+                        )
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as err:
                 _LOGGER.warning("Attempt %d failed for %s: %s", attempt + 1, self._name, str(err))
@@ -624,7 +641,8 @@ class FCUClimate(ClimateEntity, RestoreEntity):
                     await asyncio.sleep(RETRY_DELAY)
                 else:
                     _LOGGER.error("Failed to send control command after %d attempts", RETRY_ATTEMPTS)
-                    raise
+
+        raise aiohttp.ClientError(f"Failed to control {self._name} after {RETRY_ATTEMPTS} attempts")
 
     def _update_states_after_control(self, control_data):
         """Update internal states after successful control command."""
