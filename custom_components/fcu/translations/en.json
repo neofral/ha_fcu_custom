@@ -12,7 +12,8 @@
         }
     },
     "error": {
-      "cannot_connect": "Failed to connect",
+      "cannot_connect": "Failed to connect to device",
+      "invalid_value": "Invalid value provided",
       "unknown": "Unexpected error"
     },
     "abort": {

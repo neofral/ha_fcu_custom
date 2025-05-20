@@ -8,6 +8,7 @@ from homeassistant.const import (
     UnitOfTemperature,
     ATTR_TEMPERATURE,
 )
+from homeassistant.core import callback  # Add this import
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 import aiohttp
@@ -16,7 +17,7 @@ import logging
 from datetime import timedelta, datetime
 from homeassistant.core import CALLBACK_TYPE
 from homeassistant.helpers.event import async_track_time_interval
-from .const import DOMAIN, SCAN_INTERVAL
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,25 +52,26 @@ COMMON_HEADERS = {
 RETRY_ATTEMPTS = 3
 RETRY_DELAY = 2  # seconds
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Set up the fan coil unit climate entity."""
-    name = config_entry.data["name"]
-    coordinator = hass.data[DOMAIN][name]
-    
-    climate_entity = FCUClimate(name, coordinator)
-    async_add_entities([climate_entity], True)
+async def async_setup_entry(hass, entry, async_add_entities):
+    """Set up FCU climate based on config_entry."""
+    data = hass.data[DOMAIN][entry.entry_id]
+    coordinator = data["coordinator"]
+    climate = FCUClimate(coordinator, entry.entry_id, data["name"], data["ip_address"])
+    async_add_entities([climate])
+    return True
 
 class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     """Representation of a fan coil unit as a climate entity."""
 
-    def __init__(self, name, coordinator):
+    def __init__(self, coordinator, entry_id, name, ip_address):
         """Initialize the climate entity."""
         super().__init__(coordinator)
-        self._attr_unique_id = name
+        self._attr_unique_id = f"{entry_id}_climate"
         self._name = name
+        self._ip_address = ip_address
+        self._entry_id = entry_id
         self._temperature = None
         self._water_temp = None
-        self._device_status = None
         self._error_index = None
         self._target_temperature = None
         self._hvac_mode = HVACMode.OFF
@@ -166,18 +168,17 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         """Parse the state data from the device."""
         try:
             # Parse temperatures with 1 decimal precision
-            self._temperature = round(float(data.get("rt", 0)), 1)  # Room temperature
-            self._water_temp = round(float(data.get("wt", 0)), 1)  # Water temperature
-            self._device_status = data.get("device_status", None)  # Device status
-            self._error_index = data.get("error_index", None)  # Error index
+            self._temperature = round(float(data.get("rt", 0)), 1)
+            self._water_temp = round(float(data.get("wt", 0)), 1)
+            self._error_index = data.get("error_index", None)
             
-            # Update attributes for sensors
+            # Update attributes and trigger sensor updates
             self._attributes.update({
                 "room_temperature": self._temperature,
                 "water_temperature": self._water_temp,
-                "device_status": self._device_status,
                 "error_index": self._error_index,
             })
+            self.async_write_ha_state()  # This will trigger sensor updates
             
             # Get operation mode
             operation_mode = str(data.get("operation_mode", "0"))
@@ -221,16 +222,16 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 "fan_mode_fan": self._fan_mode_fan
             })
             
-            # Update HVAC action based on mode and device status
+            # Update HVAC action based on mode and temperature
             if self._hvac_mode == HVACMode.OFF:
                 self._hvac_action = HVACAction.OFF
             elif self._hvac_mode == HVACMode.HEAT:
-                if self._device_status == 0:
+                if self._temperature < (self._target_temperature - 0.5):
                     self._hvac_action = HVACAction.HEATING
                 else:
                     self._hvac_action = HVACAction.IDLE
             elif self._hvac_mode == HVACMode.COOL:
-                if self._device_status == 0:
+                if self._temperature > (self._target_temperature + 0.5):
                     self._hvac_action = HVACAction.COOLING
                 else:
                     self._hvac_action = HVACAction.IDLE
@@ -297,7 +298,7 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     def device_info(self):
         """Return device info."""
         return {
-            "identifiers": {(DOMAIN, self._attr_unique_id)},
+            "identifiers": {(DOMAIN, self._entry_id)},
             "name": self._name,
             "manufacturer": "Eko Energis + Cotronika",
             "model": "FCU Controller v.0.0.3RD",
@@ -317,7 +318,7 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     @property
     def current_temperature(self):
         """Return the current temperature."""
-        return self.coordinator.data.get("rt")
+        return self._temperature  # Use local value instead of coordinator data
 
     @property
     def target_temperature(self):
@@ -373,7 +374,6 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         """Return device-specific state attributes."""
         return {
             "water_temperature": self.coordinator.data.get("wt"),
-            "device_status": self.coordinator.data.get("device_status"),
             "error_index": self.coordinator.data.get("error_index"),
         }
 
@@ -482,3 +482,86 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "fan_mode_fan": self._fan_mode_fan
         })
         self.async_write_ha_state()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if self.coordinator.data:
+            try:
+                # Update local values from coordinator data
+                self._temperature = round(float(self.coordinator.data.get("rt", 0)), 1)
+                self._water_temp = round(float(self.coordinator.data.get("wt", 0)), 1)
+                self._error_index = self.coordinator.data.get("error_index")
+                
+                # Update HVAC mode and action
+                operation_mode = str(self.coordinator.data.get("operation_mode", "0"))
+                self._hvac_mode = self._map_operation_mode(operation_mode)
+                
+                # Update HVAC action based on mode and temperature
+                if self._hvac_mode == HVACMode.OFF:
+                    self._hvac_action = HVACAction.OFF
+                elif self._hvac_mode == HVACMode.HEAT:
+                    if self._temperature < (self._target_temperature - 0.5):
+                        self._hvac_action = HVACAction.HEATING
+                    else:
+                        self._hvac_action = HVACAction.IDLE
+                elif self._hvac_mode == HVACMode.COOL:
+                    if self._temperature > (self._target_temperature + 0.5):
+                        self._hvac_action = HVACAction.COOLING
+                    else:
+                        self._hvac_action = HVACAction.IDLE
+                else:
+                    self._hvac_action = HVACAction.FAN
+
+                self._attributes.update({
+                    "error_index": self._error_index,
+                })
+                
+            except Exception as ex:
+                _LOGGER.error("Error handling coordinator update: %s", ex)
+        
+        self.async_write_ha_state()
+
+    async def _async_update_from_data(self, data):
+        """Update attrs from data."""
+        if not data:
+            return
+
+        # Update temperatures
+        if "rt" in data:
+            self._temperature = round(float(data["rt"]), 1)
+        if "wt" in data:
+            self._water_temp = round(float(data["wt"]), 1)
+
+        # Update operation mode and state
+        if "operation_mode" in data:
+            self._hvac_mode = self._map_operation_mode(str(data["operation_mode"]))
+            if self._hvac_mode == HVACMode.OFF:
+                self._hvac_action = HVACAction.OFF
+            elif data.get("device_status", "1") == "0":
+                if self._hvac_mode == HVACMode.HEAT:
+                    self._hvac_action = HVACAction.HEATING
+                elif self._hvac_mode == HVACMode.COOL:
+                    self._hvac_action = HVACAction.COOLING
+            else:
+                self._hvac_action = HVACAction.IDLE
+
+        # Update fan modes
+        self._fan_mode_cooling = self._map_fan_speed(data.get("fan_state_current_cooling", "3"))
+        self._fan_mode_heating = self._map_fan_speed(data.get("fan_state_current_heating", "3"))
+        self._fan_mode_fan = self._map_fan_speed(data.get("fan_state_current_fan", "3"))
+
+        # Update current fan mode based on hvac_mode
+        if self._hvac_mode == HVACMode.COOL:
+            self._fan_mode = self._fan_mode_cooling
+        elif self._hvac_mode == HVACMode.HEAT:
+            self._fan_mode = self._fan_mode_heating
+        elif self._hvac_mode == HVACMode.FAN_ONLY:
+            self._fan_mode = self._fan_mode_fan
+
+        # Update attributes
+        self._attributes.update({
+            "fan_mode_cooling": self._fan_mode_cooling,
+            "fan_mode_heating": self._fan_mode_heating,
+            "fan_mode_fan": self._fan_mode_fan
+        })
