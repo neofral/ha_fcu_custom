@@ -525,31 +525,19 @@ class FCUClimate(ClimateEntity, RestoreEntity):
                 _LOGGER.error("No valid token available for %s, cannot set control", self._name)
                 return
 
-        # Use different endpoint based on auth mode
-        control_url = f"http://{self._ip_address}/wifi/{'setmode' if self._use_auth else 'setmodenoauth'}"
-        headers = COMMON_HEADERS.copy()
-        
-        if self._use_auth:
-            headers.update({
-                "Authorization": f"Bearer {self._token.strip()}",
-                "Content-Type": "application/x-www-form-urlencoded",
-            })
-
-        # Get current mode and build basic payload
+        # Get current mode and prepare data
         current_mode = control_data.get("hvac_mode", self._hvac_mode)
-        device_data = {}
-
+        mode = self._reverse_map_hvac_mode(current_mode)
+        
         # Handle temperature
         if "temperature" in control_data:
             temp = str(control_data["temperature"])
-            # Store temperature for the current mode
             if current_mode == HVACMode.COOL:
                 self._cooling_temp = float(temp)
             elif current_mode == HVACMode.HEAT:
                 self._heating_temp = float(temp)
             self._target_temperature = float(temp)
         else:
-            # Use stored temperature for the mode
             if current_mode == HVACMode.COOL:
                 temp = str(self._cooling_temp)
             elif current_mode == HVACMode.HEAT:
@@ -557,47 +545,55 @@ class FCUClimate(ClimateEntity, RestoreEntity):
             else:
                 temp = str(self._target_temperature if self._target_temperature is not None else 22)
 
-        # Add required parameters
-        device_data["required_mode"] = self._reverse_map_hvac_mode(current_mode)
-        device_data["required_temp"] = temp
-
-        # Update target temperature based on new mode
-        if "hvac_mode" in control_data:
-            if current_mode == HVACMode.COOL:
-                self._target_temperature = self._cooling_temp
-            elif current_mode == HVACMode.HEAT:
-                self._target_temperature = self._heating_temp
-
-        # Handle fan speed changes
+        # Handle fan speed
         if "fan_mode" in control_data:
-            # Set flag to prevent immediate fan mode override
             self._fan_mode_updating = True
             new_fan_mode = control_data["fan_mode"]
             fan_speed = self._reverse_map_fan_speed(new_fan_mode)
-            device_data["required_speed"] = fan_speed
             
-            # Update mode-specific fan state and current fan mode
+            # Update mode-specific fan state
             if current_mode == HVACMode.COOL:
                 self._fan_mode_cooling = new_fan_mode
-                device_data["fan_state_current_cooling"] = fan_speed
             elif current_mode == HVACMode.HEAT:
                 self._fan_mode_heating = new_fan_mode
-                device_data["fan_state_current_heating"] = fan_speed
             elif current_mode == HVACMode.FAN_ONLY:
                 self._fan_mode_fan = new_fan_mode
-                device_data["fan_state_current_fan"] = fan_speed
-
-            # Update current fan mode immediately
             self._fan_mode = new_fan_mode
-            self.async_write_ha_state()
         else:
-            # Use current fan mode if not changing
-            device_data["required_speed"] = self._reverse_map_fan_speed(self._fan_mode)
+            fan_speed = self._reverse_map_fan_speed(self._fan_mode)
 
-        # Build payload string with leading &
-        payload = "&" + "&".join(f"{k}={v}" for k, v in device_data.items())
+        # Different payload format for auth/no-auth
+        control_url = f"http://{self._ip_address}/wifi/{'setmode' if self._use_auth else 'setmodenoauth'}"
         
-        _LOGGER.debug("Sending control payload: %s for mode: %s", payload, current_mode)
+        if self._use_auth:
+            # Auth mode: form data
+            headers = {
+                **COMMON_HEADERS,
+                "Authorization": f"Bearer {self._token.strip()}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            }
+            device_data = {
+                "required_mode": mode,
+                "required_temp": temp,
+                "required_speed": fan_speed,
+            }
+            if "fan_mode" in control_data:
+                if current_mode == HVACMode.COOL:
+                    device_data["fan_state_current_cooling"] = fan_speed
+                elif current_mode == HVACMode.HEAT:
+                    device_data["fan_state_current_heating"] = fan_speed
+                elif current_mode == HVACMode.FAN_ONLY:
+                    device_data["fan_state_current_fan"] = fan_speed
+            
+            payload = "&" + "&".join(f"{k}={v}" for k, v in device_data.items())
+        else:
+            # No auth mode: URL parameters
+            headers = COMMON_HEADERS.copy()
+            # For no-auth mode, parameters go in URL
+            control_url += f"?mode={mode}&temp={temp}&speed={fan_speed}"
+            payload = None
+
+        _LOGGER.debug("Sending control - URL: %s, Payload: %s", control_url, payload)
 
         for attempt in range(RETRY_ATTEMPTS):
             try:
