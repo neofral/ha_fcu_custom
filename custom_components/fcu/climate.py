@@ -584,18 +584,16 @@ class FCUClimate(ClimateEntity, RestoreEntity):
         control_url = f"http://{self._ip_address}/wifi/{'setmode' if self._use_auth else 'setmodenoauth'}"
         headers = None
         
-        # Same parameter format for both auth and no-auth
-        device_data = {
-            "required_mode": mode,
-            "required_temp": temp,
-            "required_speed": fan_speed,
-        }
-
         if self._use_auth:
             headers = {
                 **COMMON_HEADERS,
                 "Authorization": f"Bearer {self._token.strip()}",
                 "Content-Type": "application/x-www-form-urlencoded",
+            }
+            device_data = {
+                "required_mode": mode,
+                "required_temp": temp,
+                "required_speed": fan_speed,
             }
             if "fan_mode" in control_data:
                 if current_mode == HVACMode.COOL:
@@ -604,10 +602,11 @@ class FCUClimate(ClimateEntity, RestoreEntity):
                     device_data["fan_state_current_heating"] = fan_speed
                 elif current_mode == HVACMode.FAN_ONLY:
                     device_data["fan_state_current_fan"] = fan_speed
+            payload = "&".join(f"{k}={v}" for k, v in device_data.items())
+        else:
+            # No auth mode requires exact format
+            payload = f"required_temp={temp}&required_mode={mode}&required_speed={fan_speed}"
 
-        # Build payload string with required format
-        payload = "&".join(f"{k}={v}" for k, v in device_data.items())
-        
         _LOGGER.debug("Sending control - URL: %s, Headers: %s, Payload: %s", 
                      control_url, headers, payload)
 
