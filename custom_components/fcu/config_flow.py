@@ -49,13 +49,15 @@ class FCUOptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry):
         """Initialize options flow."""
-        self.config_entry = config_entry
+        super().__init__()
+        # Don't store config_entry directly
+        self._entry_id = config_entry.entry_id
+        self._ip_address = config_entry.data[CONF_IP_ADDRESS]
         self.current_values = {}
 
     async def _fetch_current_values(self):
         """Fetch current values from device."""
-        ip_address = self.config_entry.data[CONF_IP_ADDRESS]
-        url = f"http://{ip_address}/wifi/extraconfig"
+        url = f"http://{self._ip_address}/wifi/extraconfig"
         
         try:
             async with aiohttp.ClientSession() as session:
@@ -89,7 +91,7 @@ class FCUOptionsFlowHandler(config_entries.OptionsFlow):
             await self._fetch_current_values()
 
         if user_input is not None:
-            ip_address = self.config_entry.data[CONF_IP_ADDRESS]
+            ip_address = self._ip_address  # Use stored IP address
             # Format payload like setmodenoauth
             payload = "&".join([
                 f"{k}={v}" for k, v in user_input.items()
