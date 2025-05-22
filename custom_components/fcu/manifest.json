@@ -1,7 +1,7 @@
 {
     "domain": "fcu",
     "name": "Fan Coil Unit Controller",
-    "version": "5.3.0",
+    "version": "5.4.0",
     "documentation": "https://github.com/yourusername/ha_fcu_custom",
     "dependencies": [],
     "codeowners": ["@yourusername"],

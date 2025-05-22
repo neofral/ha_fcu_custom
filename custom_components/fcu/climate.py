@@ -474,43 +474,68 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     async def _send_control_command(self, control_data):
         """Send control command to the device."""
         try:
-            # Build form data
-            form_data = {}
-            
+            # First determine the temperature to send
             if "temperature" in control_data:
-                form_data["required_temp"] = str(control_data["temperature"])
+                temp = str(control_data["temperature"])
+                # Update local temps
                 if self._hvac_mode == HVACMode.COOL:
-                    self._cooling_temp = float(form_data["required_temp"])
+                    self._cooling_temp = float(temp)
                 elif self._hvac_mode == HVACMode.HEAT:
-                    self._heating_temp = float(form_data["required_temp"])
-                self._target_temperature = float(form_data["required_temp"])
-            
-            if "hvac_mode" in control_data:
-                form_data["required_mode"] = self._reverse_map_hvac_mode(control_data["hvac_mode"])
-                self._hvac_mode = control_data["hvac_mode"]
+                    self._heating_temp = float(temp)
+                self._target_temperature = float(temp)
             else:
-                form_data["required_mode"] = self._reverse_map_hvac_mode(self._hvac_mode)
-            
-            if "fan_mode" in control_data:
-                form_data["required_speed"] = self._reverse_map_fan_speed(control_data["fan_mode"])
-                self._fan_mode = control_data["fan_mode"]
-            else:
-                form_data["required_speed"] = self._reverse_map_fan_speed(self._fan_mode)
+                # Use existing temperature based on mode
+                if self._hvac_mode == HVACMode.COOL:
+                    temp = str(self._cooling_temp)
+                elif self._hvac_mode == HVACMode.HEAT:
+                    temp = str(self._heating_temp)
+                else:
+                    temp = str(self._target_temperature if self._target_temperature is not None else 22)
 
-            _LOGGER.debug("Sending control command: %s", form_data)
+            # Update mode if provided
+            if "hvac_mode" in control_data:
+                self._hvac_mode = control_data["hvac_mode"]
+
+            # Update fan mode if provided
+            if "fan_mode" in control_data:
+                self._fan_mode = control_data["fan_mode"]
+
+            # Build request with all required parameters
+            device_params = {
+                "required_temp": temp,
+                "required_mode": self._reverse_map_hvac_mode(self._hvac_mode),
+                "required_speed": self._reverse_map_fan_speed(self._fan_mode)
+            }
+
+            _LOGGER.debug("Sending control command: %s", device_params)
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"http://{self._ip_address}/wifi/setmodenoauth",
-                    data=form_data,
+                    data=device_params,
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                     timeout=aiohttp.ClientTimeout(total=8)
                 ) as response:
+                    response_text = await response.text()
+                    _LOGGER.debug("Response: %s", response_text)
                     if response.status == 200:
-                        await self.coordinator.async_refresh()  # Refresh state after successful control
-                        _LOGGER.debug("Control command successful")
+                        await self.coordinator.async_refresh()
                     else:
-                        _LOGGER.error("Control failed: %s", response.status)
+                        _LOGGER.error("Control failed: %s - %s", response.status, response_text)
 
         except Exception as err:
             _LOGGER.error("Failed to send control command: %s", str(err))
+
+    def set_hvac_mode(self, hvac_mode: HVACMode) -> None:
+        """Set new target hvac mode."""
+        if hvac_mode not in HVAC_MODES:
+            raise ValueError(f"Invalid hvac_mode: {hvac_mode}")
+        self._hvac_mode = hvac_mode
+        self.schedule_update_ha_state()
+
+    async def async_set_hvac_mode(self, hvac_mode):
+        """Set new target hvac mode."""
+        if hvac_mode not in HVAC_MODES:
+            _LOGGER.error(f"Unsupported HVAC mode: {hvac_mode}")
+            return
+        await self._send_control_command({"hvac_mode": hvac_mode})
