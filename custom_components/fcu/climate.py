@@ -470,3 +470,47 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "fan_mode_heating": self._fan_mode_heating,
             "fan_mode_fan": self._fan_mode_fan
         })
+
+    async def _send_control_command(self, control_data):
+        """Send control command to the device."""
+        try:
+            # Build form data
+            form_data = {}
+            
+            if "temperature" in control_data:
+                form_data["required_temp"] = str(control_data["temperature"])
+                if self._hvac_mode == HVACMode.COOL:
+                    self._cooling_temp = float(form_data["required_temp"])
+                elif self._hvac_mode == HVACMode.HEAT:
+                    self._heating_temp = float(form_data["required_temp"])
+                self._target_temperature = float(form_data["required_temp"])
+            
+            if "hvac_mode" in control_data:
+                form_data["required_mode"] = self._reverse_map_hvac_mode(control_data["hvac_mode"])
+                self._hvac_mode = control_data["hvac_mode"]
+            else:
+                form_data["required_mode"] = self._reverse_map_hvac_mode(self._hvac_mode)
+            
+            if "fan_mode" in control_data:
+                form_data["required_speed"] = self._reverse_map_fan_speed(control_data["fan_mode"])
+                self._fan_mode = control_data["fan_mode"]
+            else:
+                form_data["required_speed"] = self._reverse_map_fan_speed(self._fan_mode)
+
+            _LOGGER.debug("Sending control command: %s", form_data)
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"http://{self._ip_address}/wifi/setmodenoauth",
+                    data=form_data,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    timeout=aiohttp.ClientTimeout(total=8)
+                ) as response:
+                    if response.status == 200:
+                        await self.coordinator.async_refresh()  # Refresh state after successful control
+                        _LOGGER.debug("Control command successful")
+                    else:
+                        _LOGGER.error("Control failed: %s", response.status)
+
+        except Exception as err:
+            _LOGGER.error("Failed to send control command: %s", str(err))
