@@ -539,3 +539,32 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             _LOGGER.error(f"Unsupported HVAC mode: {hvac_mode}")
             return
         await self._send_control_command({"hvac_mode": hvac_mode})
+
+    def set_temperature(self, **kwargs) -> None:
+        """Set new target temperature."""
+        if (temperature := kwargs.get(ATTR_TEMPERATURE)) is None:
+            return
+        self._target_temperature = float(temperature)
+        self.schedule_update_ha_state()
+
+    async def async_set_temperature(self, **kwargs):
+        """Set new target temperature."""
+        if (temperature := kwargs.get(ATTR_TEMPERATURE)) is None:
+            return
+        
+        try:
+            temp = float(temperature)
+            if temp < self._attr_min_temp or temp > self._attr_max_temp:
+                _LOGGER.error("Temperature %s out of range [%s, %s]", 
+                            temp, self._attr_min_temp, self._attr_max_temp)
+                return
+                
+            await self._send_control_command({
+                "temperature": temp,
+                "hvac_mode": self._hvac_mode,  # Include current mode
+                "fan_mode": self._fan_mode      # Include current fan mode
+            })
+        except ValueError as ex:
+            _LOGGER.error("Invalid temperature value: %s", ex)
+        except Exception as ex:
+            _LOGGER.error("Failed to set temperature: %s", ex)
