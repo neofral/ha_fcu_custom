@@ -43,7 +43,7 @@ async def log_with_throttle(logger, level, msg, *args):
 HVAC_MODES = [HVACMode.OFF, HVACMode.COOL, HVACMode.HEAT, HVACMode.FAN_ONLY]
 FAN_MODES = ["low", "medium", "high", "auto"]
 
-TIMEOUT = 10  # seconds
+TIMEOUT = 15  # seconds  (increase from 10 to 15, or higher if needed)
 CONTENT_TYPE_JSON = "application/json"
 COMMON_HEADERS = {
     "X-Requested-With": "myApp",
@@ -209,47 +209,38 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             elif self._hvac_mode == HVACMode.HEAT:
                 self._target_temperature = self._heating_temp
 
-            # Only update fan modes if we haven't just changed them
-            if not hasattr(self, '_fan_mode_updating'):
-                self._fan_mode_cooling = self._map_fan_speed(data.get("fan_state_current_cooling", "3"))
-                self._fan_mode_heating = self._map_fan_speed(data.get("fan_state_current_heating", "3"))
-                self._fan_mode_fan = self._map_fan_speed(data.get("fan_state_current_fan", "3"))
-                
-                # Update current fan mode only if mode changed
-                if prev_mode != self._hvac_mode:
-                    if self._hvac_mode == HVACMode.COOL:
-                        self._fan_mode = self._fan_mode_cooling
-                    elif self._hvac_mode == HVACMode.HEAT:
-                        self._fan_mode = self._fan_mode_heating
-                    elif self._hvac_mode == HVACMode.FAN_ONLY:
-                        self._fan_mode = self._fan_mode_fan
-
-            # Store fan states in attributes
-            self._attributes.update({
-                "fan_mode_cooling": self._fan_mode_cooling,
-                "fan_mode_heating": self._fan_mode_heating,
-                "fan_mode_fan": self._fan_mode_fan
-            })
-            
-            # Update HVAC action based on mode and temperature
+            # --- Thermostat logic for hvac_action ---
+            current_temp = self._temperature
+            target_temp = self._target_temperature
+            device_status_raw = data.get("device_status", "1")
+            device_status = str(device_status_raw)
+            _LOGGER.debug(
+                "Device status for %s: raw=%r, str=%s, hvac_mode=%s, current_temp=%s, target_temp=%s",
+                self._name, device_status_raw, device_status, self._hvac_mode, current_temp, target_temp
+            )
             if self._hvac_mode == HVACMode.OFF:
                 self._hvac_action = HVACAction.OFF
             elif self._hvac_mode == HVACMode.HEAT:
-                if self._temperature < (self._target_temperature - 0.5):
+                if current_temp is not None and target_temp is not None and current_temp < target_temp:
                     self._hvac_action = HVACAction.HEATING
                 else:
                     self._hvac_action = HVACAction.IDLE
             elif self._hvac_mode == HVACMode.COOL:
-                if self._temperature > (self._target_temperature + 0.5):
+                if current_temp is not None and target_temp is not None and current_temp > target_temp:
                     self._hvac_action = HVACAction.COOLING
                 else:
                     self._hvac_action = HVACAction.IDLE
+            elif self._hvac_mode == HVACMode.FAN_ONLY:
+                if device_status in ("0", 0):
+                    self._hvac_action = HVACAction.FAN
+                else:
+                    self._hvac_action = HVACAction.IDLE
             else:
-                self._hvac_action = HVACAction.FAN
-            
-            _LOGGER.debug("Parsed state - Mode: %s, Action: %s, Temp: %s, Target: %s, Fan: %s",
-                    self._hvac_mode, self._hvac_action, self._temperature,
-                    self._target_temperature, self._fan_mode)
+                self._hvac_action = HVACAction.IDLE
+            _LOGGER.debug(
+                "Set hvac_action for %s: %s (mode=%s, device_status=%s, current_temp=%s, target_temp=%s)",
+                self._name, self._hvac_action, self._hvac_mode, device_status, current_temp, target_temp
+            )
 
         except Exception as ex:
             log_with_throttle(_LOGGER, logging.ERROR, 
@@ -417,12 +408,39 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 self._temperature = round(float(self.coordinator.data.get("rt", 0)), 1)
                 self._water_temp = round(float(self.coordinator.data.get("wt", 0)), 1)
                 self._error_index = self.coordinator.data.get("error_index", None)
-                
-                # Update HVAC mode and action from data
                 operation_mode = str(self.coordinator.data.get("operation_mode", "0"))
                 self._hvac_mode = self._map_operation_mode(operation_mode)
-                
-                # Update the state
+                current_temp = self._temperature
+                target_temp = self._target_temperature
+                device_status_raw = self.coordinator.data.get("device_status", "1")
+                device_status = str(device_status_raw)
+                _LOGGER.debug(
+                    "Coordinator update device_status for %s: raw=%r, str=%s, hvac_mode=%s, current_temp=%s, target_temp=%s",
+                    self._name, device_status_raw, device_status, self._hvac_mode, current_temp, target_temp
+                )
+                if self._hvac_mode == HVACMode.OFF:
+                    self._hvac_action = HVACAction.OFF
+                elif self._hvac_mode == HVACMode.HEAT:
+                    if current_temp is not None and target_temp is not None and current_temp < target_temp:
+                        self._hvac_action = HVACAction.HEATING
+                    else:
+                        self._hvac_action = HVACAction.IDLE
+                elif self._hvac_mode == HVACMode.COOL:
+                    if current_temp is not None and target_temp is not None and current_temp > target_temp:
+                        self._hvac_action = HVACAction.COOLING
+                    else:
+                        self._hvac_action = HVACAction.IDLE
+                elif self._hvac_mode == HVACMode.FAN_ONLY:
+                    if device_status in ("0", 0):
+                        self._hvac_action = HVACAction.FAN
+                    else:
+                        self._hvac_action = HVACAction.IDLE
+                else:
+                    self._hvac_action = HVACAction.IDLE
+                _LOGGER.debug(
+                    "Coordinator set hvac_action for %s: %s (mode=%s, device_status=%s, current_temp=%s, target_temp=%s)",
+                    self._name, self._hvac_action, self._hvac_mode, device_status, current_temp, target_temp
+                )
                 self.async_write_ha_state()
             except Exception as ex:
                 _LOGGER.error("Error handling coordinator update: %s", ex)
@@ -431,26 +449,43 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         """Update attrs from data."""
         if not data:
             return
-
-        # Update temperatures
         if "rt" in data:
             self._temperature = round(float(data["rt"]), 1)
         if "wt" in data:
             self._water_temp = round(float(data["wt"]), 1)
-
-        # Update operation mode and state
         if "operation_mode" in data:
             self._hvac_mode = self._map_operation_mode(str(data["operation_mode"]))
+            current_temp = self._temperature
+            target_temp = self._target_temperature
+            device_status_raw = data.get("device_status", "1")
+            device_status = str(device_status_raw)
+            _LOGGER.debug(
+                "Async update device_status for %s: raw=%r, str=%s, hvac_mode=%s, current_temp=%s, target_temp=%s",
+                self._name, device_status_raw, device_status, self._hvac_mode, current_temp, target_temp
+            )
             if self._hvac_mode == HVACMode.OFF:
                 self._hvac_action = HVACAction.OFF
-            elif data.get("device_status", "1") == "0":
-                if self._hvac_mode == HVACMode.HEAT:
+            elif self._hvac_mode == HVACMode.HEAT:
+                if current_temp is not None and target_temp is not None and current_temp < target_temp:
                     self._hvac_action = HVACAction.HEATING
-                elif self._hvac_mode == HVACMode.COOL:
+                else:
+                    self._hvac_action = HVACAction.IDLE
+            elif self._hvac_mode == HVACMode.COOL:
+                if current_temp is not None and target_temp is not None and current_temp > target_temp:
                     self._hvac_action = HVACAction.COOLING
+                else:
+                    self._hvac_action = HVACAction.IDLE
+            elif self._hvac_mode == HVACMode.FAN_ONLY:
+                if device_status in ("0", 0):
+                    self._hvac_action = HVACAction.FAN
+                else:
+                    self._hvac_action = HVACAction.IDLE
             else:
                 self._hvac_action = HVACAction.IDLE
-
+            _LOGGER.debug(
+                "Async update set hvac_action for %s: %s (mode=%s, device_status=%s, current_temp=%s, target_temp=%s)",
+                self._name, self._hvac_action, self._hvac_mode, device_status, current_temp, target_temp
+            )
         # Update fan modes
         self._fan_mode_cooling = self._map_fan_speed(data.get("fan_state_current_cooling", "3"))
         self._fan_mode_heating = self._map_fan_speed(data.get("fan_state_current_heating", "3"))
