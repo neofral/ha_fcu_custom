@@ -91,19 +91,19 @@ class FCUOptionsFlow(config_entries.OptionsFlow):
             vol.Required(
                 CONF_T1D,
                 default=self.config_entry.options.get(CONF_T1D, DEFAULT_T1D)
-            ): vol.All(vol.Coerce(float), vol.Range(min=-10.0, max=10.0)),
+            ): vol.All(vol.Coerce(float), vol.Range(min=-90.0, max=10.0)),
             vol.Required(
                 CONF_T2D,
                 default=self.config_entry.options.get(CONF_T2D, DEFAULT_T2D)
-            ): vol.All(vol.Coerce(float), vol.Range(min=-10.0, max=10.0)),
+            ): vol.All(vol.Coerce(float), vol.Range(min=-90.0, max=10.0)),
             vol.Required(
                 CONF_T3D,
                 default=self.config_entry.options.get(CONF_T3D, DEFAULT_T3D)
-            ): vol.All(vol.Coerce(float), vol.Range(min=-10.0, max=10.0)),
+            ): vol.All(vol.Coerce(float), vol.Range(min=-90.0, max=10.0)),
             vol.Required(
                 CONF_T4D,
                 default=self.config_entry.options.get(CONF_T4D, DEFAULT_T4D)
-            ): vol.All(vol.Coerce(float), vol.Range(min=-10.0, max=10.0)),
+            ): vol.All(vol.Coerce(float), vol.Range(min=-90.0, max=10.0)),
             vol.Required(
                 CONF_SHUTDOWN_DELAY,
                 default=self.config_entry.options.get(CONF_SHUTDOWN_DELAY, DEFAULT_SHUTDOWN_DELAY)
