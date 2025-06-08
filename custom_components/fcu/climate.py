@@ -603,3 +603,28 @@ class FCUClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             _LOGGER.error("Invalid temperature value: %s", ex)
         except Exception as ex:
             _LOGGER.error("Failed to set temperature: %s", ex)
+
+    async def async_set_fan_mode(self, fan_mode):
+        """Set new fan mode."""
+        if fan_mode not in FAN_MODES:
+            _LOGGER.error(f"Unsupported fan mode: {fan_mode}")
+            return
+            
+        try:
+            # Store the fan mode based on current HVAC mode
+            if self._hvac_mode == HVACMode.COOL:
+                self._fan_mode_cooling = fan_mode
+            elif self._hvac_mode == HVACMode.HEAT:
+                self._fan_mode_heating = fan_mode
+            elif self._hvac_mode == HVACMode.FAN_ONLY:
+                self._fan_mode_fan = fan_mode
+                
+            self._fan_mode = fan_mode
+            
+            await self._send_control_command({
+                "fan_mode": fan_mode,
+                "temperature": self._target_temperature,  # Include current temperature
+                "hvac_mode": self._hvac_mode  # Include current mode
+            })
+        except Exception as ex:
+            _LOGGER.error("Failed to set fan mode: %s", ex)
